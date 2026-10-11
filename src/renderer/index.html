@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>الشرق | نظام إدارة المحل</title>
+
+       <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+
+            <div class="brand">
+                <div class="brand-icon">ش</div>
+
+                <div class="brand-text">
+                    <span class="brand-kicker">El-Sharq</span>
+                    <h1>الشرق</h1>
+                    <span>نظام إدارة </span>
+                </div>
+            </div>
+
+            <nav class="sidebar-menu">
+
+                <button class="menu-item active" data-nav="dashboard">
+                    <span>⌂</span>
+                    <span>الرئيسية</span>
+                </button>
+
+                <button class="menu-item" data-nav="products">
+                    <span>▣</span>
+                    <span>المنتجات</span>
+                </button>
+
+                <button class="menu-item" data-nav="sales">
+                    <span>▤</span>
+                    <span>المبيعات</span>
+                </button>
+
+                <button class="menu-item" data-nav="plumbing-orders">
+                    <span>🔧</span>
+                    <span>طلبات السباكة</span>
+                </button>
+
+                <button class="menu-item" data-nav="purchases">
+                    <span>▥</span>
+                    <span>المشتريات</span>
+                </button>
+
+                <button class="menu-item" data-nav="stock">
+                    <span>▦</span>
+                    <span>المخزن</span>
+                </button>
+
+                <button class="menu-item" data-nav="customers">
+                    <span>♙</span>
+                    <span>العملاء</span>
+                </button>
+
+                <button class="menu-item" data-nav="suppliers">
+                    <span>♧</span>
+                    <span>الموردين</span>
+                </button>
+
+                <button class="menu-item" data-nav="cashier">
+                    <span>◈</span>
+                    <span>الخزنة</span>
+                </button>
+
+                <button class="menu-item" data-nav="reports">
+                    <span>▥</span>
+                    <span>التقارير</span>
+                </button>
+
+                <button class="menu-item" data-nav="settings">
+                    <span>⚙</span>
+                    <span>الإعدادات</span>
+                </button>
+
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-avatar">م</div>
+
+                <div class="user-info">
+                    <strong>المدير</strong>
+                    <span>Mr. Nashed</span>
+                </div>
+            </div>
+
+        </aside>
+
+
+        <!-- Main Content -->
+        <main class="main">
+
+            <!-- Header -->
+            <header class="topbar">
+
+                <div class="topbar-title">
+                    <span class="eyebrow">نظام إدارة</span>
+                    <h2>الرئيسية</h2>
+                    <p>مرحبًا بك في نظام إدارة الشرق</p>
+                </div>
+
+                <div class="topbar-actions">
+
+                    <div class="brand-pill">
+                        <span>الشرق</span>
+                        <small>POS System</small>
+                    </div>
+
+                    <button class="icon-button" id="lowStockButton" type="button" title="عرض تنبيهات المخزون" aria-label="عرض تنبيهات المخزون">
+                        🔔
+                    </button>
+
+                    <div class="date-box">
+                        <span>اليوم</span>
+                        <strong id="currentDate">--</strong>
+                    </div>
+
+                </div>
+
+            </header>
+
+
+            <!-- Dashboard -->
+            <section class="dashboard">
+
+                <div class="welcome-card">
+
+                    <div>
+                        <span class="small-label">
+                            نظرة عامة
+                        </span>
+
+                        <h3>
+                            إدارة المحل في مكان واحد
+                        </h3>
+
+                        <p>
+                            تابع المبيعات والمخزون والخزنة
+                            والحسابات بسهولة.
+                        </p>
+                    </div>
+
+                    <div class="welcome-icon">
+                        ش
+                    </div>
+
+                </div>
+
+
+                <!-- Statistics -->
+
+                <div class="stats-grid">
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon sales">
+                            م
+                        </div>
+
+                        <div>
+                            <span>مبيعات اليوم</span>
+                            <strong>0.00 ج.م</strong>
+                        </div>
+
+                    </div>
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon cash">
+                            خ
+                        </div>
+
+                        <div>
+                            <span>الخزنة</span>
+                            <strong>0.00 ج.م</strong>
+                        </div>
+
+                    </div>
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon stock">
+                            م
+                        </div>
+
+                        <div>
+                            <span>قيمة المخزون</span>
+                            <strong>0.00 ج.م</strong>
+                        </div>
+
+                    </div>
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon profit">
+                            ر
+                        </div>
+
+                        <div>
+                            <span>ربح اليوم</span>
+                            <strong>0.00 ج.م</strong>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Quick Actions -->
+
+                <div class="section-header">
+
+                    <div>
+                        <h3>الوصول السريع</h3>
+                        <span>أكثر العمليات استخدامًا</span>
+                    </div>
+
+                </div>
+
+
+                <div class="quick-grid">
+
+                    <button class="quick-card">
+                        <div>＋</div>
+                        <strong>فاتورة بيع</strong>
+                        <span>إنشاء فاتورة جديدة</span>
+                    </button>
+
+                    <button class="quick-card">
+                        <div>＋</div>
+                        <strong>فاتورة شراء</strong>
+                        <span>إضافة مشتريات جديدة</span>
+                    </button>
+
+                    <button class="quick-card">
+                        <div>▣</div>
+                        <strong>إضافة منتج</strong>
+                        <span>إضافة صنف للمخزون</span>
+                    </button>
+
+                    <button class="quick-card">
+                        <div>↔</div>
+                        <strong>تحويل مخزون</strong>
+                        <span>المعرض ↔ المخزن</span>
+                    </button>
+
+                </div>
+
+
+                <!-- Bottom Section -->
+
+                <div class="bottom-grid">
+
+                    <div class="panel">
+
+                        <div class="panel-header">
+                            <div>
+                                <h3>آخر المبيعات</h3>
+                                <span>آخر الفواتير</span>
+                            </div>
+
+                            <button>عرض الكل</button>
+                        </div>
+
+                        <div class="empty-state">
+                            <div>▤</div>
+                            <strong>لا توجد مبيعات حتى الآن</strong>
+                            <span>
+                                ستظهر آخر الفواتير هنا
+                            </span>
+                        </div>
+
+                    </div>
+
+
+                    <div class="panel">
+
+                        <div class="panel-header">
+                            <div>
+                                <h3>تنبيهات المخزون</h3>
+                                <span>الأصناف التي تحتاج متابعة</span>
+                            </div>
+                        </div>
+
+                        <div class="empty-state">
+                            <div>✓</div>
+                            <strong>لا توجد تنبيهات</strong>
+                            <span>
+                                المخزون يعمل بشكل طبيعي
+                            </span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </div>
+
+    <script src="search.js"></script>
+    <script src="invoice-print.js"></script>
+    <script src="operations.js"></script>
+    <script src="app.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "name": "el-sharq",
+  "version": "1.0.0",
+  "description": "El-Sharq Shop Management System",
+  "main": "main.js",
+  "scripts": {
+    "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
+    "test": "node --test test/**/*.test.js",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "author": "El-Sharq",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "build": {
+    "appId": "com.elsharq.shop",
+    "productName": "El-Sharq",
+    "directories": {
+      "output": "release"
+    },
+    "npmRebuild": false,
+    "files": [
+      "main.js",
+      "src/**/*",
+      "package.json",
+      "!src/database/data/*.db-wal",
+      "!src/database/data/*.db-shm"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

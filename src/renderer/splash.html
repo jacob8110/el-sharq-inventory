@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+    <title>الشرق</title>
+    <link rel="stylesheet" href="splash.css">
+</head>
+<body>
+    <div class="stage" id="stage" aria-live="polite">
+        <div class="bg-wrap"><div class="bg"></div></div>
+        <div class="light-sweep"></div>
+        <div class="vignette"></div>
+        <div class="brand-shade"></div>
+        <div class="glow"></div>
+
+        <button class="window-close" id="windowCloseButton" type="button" aria-label="إغلاق البرنامج" title="إغلاق البرنامج">×</button>
+
+        <main class="brand">
+            <div class="brand-lockup">
+                <svg class="brand-mark" viewBox="0 0 150 160" role="img" aria-label="شعار الشرق">
+                    <defs>
+                        <linearGradient id="markGold" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stop-color="#fff1cf"/>
+                            <stop offset=".52" stop-color="#d4ad69"/>
+                            <stop offset="1" stop-color="#9c7540"/>
+                        </linearGradient>
+                        <linearGradient id="waterCrystal" x1=".18" y1=".08" x2=".82" y2=".96">
+                            <stop class="water-stop water-stop-light" offset="0" stop-color="#f4ffff"/>
+                            <stop class="water-stop" offset=".24" stop-color="#9deeff"/>
+                            <stop class="water-stop" offset=".58" stop-color="#36b9df"/>
+                            <stop class="water-stop water-stop-deep" offset="1" stop-color="#176b9d"/>
+                        </linearGradient>
+                        <linearGradient id="stonePlaque" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stop-color="#080b11"/>
+                            <stop offset=".48" stop-color="#20252d"/>
+                            <stop offset="1" stop-color="#090c12"/>
+                        </linearGradient>
+                    </defs>
+                    <path class="mark-plaque" d="M24 47 75 17l51 30v65l-51 30-51-30z"/>
+                    <path class="mark-line mark-frame" d="M24 47 75 17l51 30v65l-51 30-51-30z"/>
+                    <path class="drop-bezel" d="M75 54c-11 15-20 25-20 38a20 20 0 0 0 40 0c0-13-9-23-20-38z"/>
+                    <path class="mark-line mark-drop" d="M75 54c-11 15-20 25-20 38a20 20 0 0 0 40 0c0-13-9-23-20-38z"/>
+                    <path class="mark-line mark-water" d="M63 96c6 7 18 7 24 0"/>
+                    <path class="drop-glint" d="M66 84c1-6 4-11 8-16"/>
+                    <path class="drop-ripple" d="M48 119c9 8 18 11 27 11s18-3 27-11"/>
+                </svg>
+                <div class="wordmark">
+                    <svg class="logo" viewBox="0 0 600 220" role="img" aria-label="الشرق">
+                        <defs>
+                            <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stop-color="#fff4d9"/>
+                                <stop offset=".48" stop-color="#d4ad69"/>
+                                <stop offset="1" stop-color="#9c7540"/>
+                            </linearGradient>
+                            <linearGradient id="stoneCut" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stop-color="#11151b"/>
+                                <stop offset=".45" stop-color="#313842"/>
+                                <stop offset="1" stop-color="#1a1f26"/>
+                            </linearGradient>
+                            <clipPath id="reveal">
+                                <rect class="reveal-rect" x="0" y="0" width="600" height="220"/>
+                            </clipPath>
+                        </defs>
+                        <text class="logo-stroke" x="300" y="165" text-anchor="middle">الشرق</text>
+                        <text class="logo-fill" x="300" y="165" text-anchor="middle" clip-path="url(#reveal)">الشرق</text>
+                    </svg>
+                    <div class="rule"></div>
+                </div>
+            </div>
+            <h1 class="subtitle">للأدوات الصحية والسباكة والسيراميك</h1>
+            <p class="tagline">جودة .. ثقة .. لبيتك</p>
+        </main>
+
+        <section class="showcase" aria-label="أقسام ومنتجات الشرق">
+            <article class="showcase-card sanitary">
+                <svg viewBox="0 0 48 48" aria-hidden="true">
+                    <path d="M8 25h32v5a9 9 0 0 1-9 9H17a9 9 0 0 1-9-9v-5Z"/>
+                    <path d="M17 25v-7a7 7 0 0 1 7-7h7"/>
+                    <path d="M31 11v5m-3-5h6M15 39v3m18-3v3M21 25v-4"/>
+                </svg>
+                <div><strong>أدوات صحية</strong><span>أناقة وراحة يومية</span></div>
+            </article>
+            <article class="showcase-card plumbing">
+                <svg viewBox="0 0 48 48" aria-hidden="true">
+                    <path d="M10 9v13a8 8 0 0 0 8 8h5a7 7 0 0 1 7 7v2"/>
+                    <path d="M6 9h8M26 39h8m-8-5h8"/>
+                    <path d="M10 6v6m-4 13h8m10 11h8"/>
+                </svg>
+                <div><strong>السباكة</strong><span>مواسير ووصلات موثوقة</span></div>
+            </article>
+            <article class="showcase-card ceramic">
+                <svg viewBox="0 0 48 48" aria-hidden="true">
+                    <path d="m8 15 19-7 13 5-19 7-13-5Z"/>
+                    <path d="m8 15 13 5v19L8 34V15Zm13 5 19-7v19l-19 7V20Z"/>
+                    <path d="m14 17 18-7m-8 25 12-5"/>
+                </svg>
+                <div><strong>السيراميك</strong><span>تفاصيل تكمّل المكان</span></div>
+            </article>
+        </section>
+
+        <footer class="loader">
+            <div class="bar" role="progressbar" aria-label="تقدم تشغيل النظام" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="fill" id="fill"></div>
+            </div>
+            <div class="status" id="status">جاري تشغيل الشرق...</div>
+        </footer>
+
+        <section class="startup-error" id="startupError" role="alert" hidden>
+            <strong>حدث خطأ أثناء تشغيل النظام</strong>
+            <span>يمكنك إعادة المحاولة أو إغلاق البرنامج.</span>
+            <div class="error-actions">
+                <button id="retryButton" type="button">إعادة المحاولة</button>
+                <button id="closeButton" type="button">إغلاق البرنامج</button>
+            </div>
+        </section>
+    </div>
+    <script src="splash.js"></script>
+</body>
+</html>
