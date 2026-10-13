@@ -26,3 +26,15 @@ developer_private_key.pem
 license-tool.js
 
 elsharq.license
+
+# Local inspection outputs; do not publish these
+/purchase-final-check.txt
+/purchase-save-details.txt
+/quick-delete-inspect.txt
+/reservation-core-ranges.txt
+/reservation-finalize-flow.txt
+/reservation-sale-flow.txt
+/TEXT,*
+/bject System.Text.UTF8Encoding*
+/lve-Path *
+/t = $Source.IndexOf*
