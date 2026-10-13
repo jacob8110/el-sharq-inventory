@@ -3687,8 +3687,20 @@ function waitForMainReady() {
     });
 }
 
+const { verifyLicense } = require("./src/license-validator");
+
 app.whenReady().then(async () => {
     try {
+        const license = verifyLicense();
+        if (!license.valid) {
+            dialog.showErrorBox(
+                "النظام غير مرخص - نظام إدارة الشرق",
+                `عذراً، هذا النظام محمي بحقوق الملكية الفكرية.\n\nمعرف جهازك: ${license.machineId}\nالحالة: ${license.reason}\n\nللحصول على ترخيص التشغيل يرجى التواصل مع المطور:\nيعقوب أشرف\nEmail: jacobashraf6@gmail.com`
+            );
+            app.quit();
+            return;
+        }
+
         await createSplashWindow();
         if (startupHasFailed) return;
 

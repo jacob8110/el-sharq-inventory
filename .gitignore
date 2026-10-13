@@ -21,3 +21,8 @@ project_structure.txt
 splash_code.txt
 node_modules/
 
+
+developer_private_key.pem
+license-tool.js
+
+elsharq.license
