@@ -40,6 +40,44 @@ function requestDeletionPassword() {
     });
 }
 window.requestDeletionPassword = requestDeletionPassword;
+
+// Prevent accidental value changes when scrolling over numeric fields.
+document.addEventListener("wheel", (event) => {
+    if (event.target instanceof HTMLInputElement && event.target.type === "number") {
+        event.preventDefault();
+    }
+}, { capture: true, passive: false });
+
+// عند التركيز على خانة رقم قيمتها صفر، امسح الصفر لكتابة الرقم الجديد مباشرة.
+document.addEventListener("focusin", (event) => {
+    const input = event.target;
+
+    if (!(input instanceof HTMLInputElement) || input.type !== "number") {
+        return;
+    }
+
+    if (/^[+-]?0+(?:\.0+)?$/.test(input.value.trim())) {
+        input.dataset.zeroClearedOnFocus = "1";
+        input.value = "";
+    }
+}, true);
+
+// لو المستخدم ترك الخانة فارغة، أعد الصفر الافتراضي عند الخروج منها.
+document.addEventListener("focusout", (event) => {
+    const input = event.target;
+
+    if (!(input instanceof HTMLInputElement) || input.type !== "number") {
+        return;
+    }
+
+    if (input.dataset.zeroClearedOnFocus === "1") {
+        if (input.value === "") {
+            input.value = "0";
+        }
+
+        delete input.dataset.zeroClearedOnFocus;
+    }
+}, true);
 window.editProductFromStock = (id) => showAddProductModal(Number(id), null, "stock");
 
 setupInterfaceMotion();
@@ -73,15 +111,15 @@ async function openLowStockNotificationsModal() {
                     <h2>منتجات تحت الحد الأدنى</h2>
                     <p class="low-stock-modal-sub">
                         ${lowStock.length
-                            ? `يوجد ${lowStock.length} منتج يجب تجديد مخزونه قريبًا`
-                            : "الحمد لله، لا توجد منتجات تحت الحد الأدنى حاليًا"}
+            ? `يوجد ${lowStock.length} منتج يجب تجديد مخزونه قريبًا`
+            : "الحمد لله، لا توجد منتجات تحت الحد الأدنى حاليًا"}
                     </p>
                 </div>
                 <button class="low-stock-modal-close" type="button" aria-label="إغلاق">✕</button>
             </div>
             <div class="low-stock-modal-body">
                 ${lowStock.length
-                    ? `<div class="low-stock-table-wrap">
+            ? `<div class="low-stock-table-wrap">
                          <table class="last-invoices-table products-table low-stock-table">
                             <thead>
                                 <tr>
@@ -94,13 +132,13 @@ async function openLowStockNotificationsModal() {
                             </thead>
                             <tbody>
                                 ${lowStock.map((product) => {
-                                    const qty = Number(product.total_quantity || 0);
-                                    const min = Number(product.min_stock || 0);
-                                    const pct = min > 0 ? Math.round((qty / Math.max(min, 1)) * 100) : 0;
-                                    const isCritical = qty <= Math.max(1, Math.floor(min * 0.5));
-                                    const statusClass = isCritical ? "status inactive" : "status active";
-                                    const statusText = isCritical ? "حرج — تحت النصف" : "منخفض";
-                                    return `
+                const qty = Number(product.total_quantity || 0);
+                const min = Number(product.min_stock || 0);
+                const pct = min > 0 ? Math.round((qty / Math.max(min, 1)) * 100) : 0;
+                const isCritical = qty <= Math.max(1, Math.floor(min * 0.5));
+                const statusClass = isCritical ? "status inactive" : "status active";
+                const statusText = isCritical ? "حرج — تحت النصف" : "منخفض";
+                return `
                                         <tr>
                                             <td><strong>${escapeHtml(product.name)}</strong></td>
                                             <td>${escapeHtml(product.category_name || "—")}</td>
@@ -109,22 +147,22 @@ async function openLowStockNotificationsModal() {
                                             <td><span class="${statusClass}">${statusText}</span></td>
                                         </tr>
                                     `;
-                                }).join("")}
+            }).join("")}
                             </tbody>
                          </table>
                        </div>`
-                    : `<div class="low-stock-empty">
+            : `<div class="low-stock-empty">
                          <div class="low-stock-empty-icon">✓</div>
                          <strong>المخزون في أمان</strong>
                          <span>كل المنتجات في مستوى مقبول، لا يوجد طلبات تجديد حاليًا</span>
                        </div>`
-                }
+        }
             </div>
             <div class="low-stock-modal-footer">
                 <button type="button" class="secondary-button low-stock-close-btn">إغلاق</button>
                 ${lowStock.length
-                    ? `<button type="button" class="primary-button low-stock-goto-btn">فتح صفحة المخزن للمراجعة</button>`
-                    : ""}
+            ? `<button type="button" class="primary-button low-stock-goto-btn">فتح صفحة المخزن للمراجعة</button>`
+            : ""}
             </div>
         </div>
     `;
@@ -214,6 +252,26 @@ menuItems.forEach((item) => {
                 await showSalesPage();
                 break;
 
+            // worker-payroll-route-v1
+            case "workers":
+                if (topTitle) topTitle.textContent = "العمال والرواتب";
+                if (topEyebrow) topEyebrow.textContent = "شؤون العاملين";
+                if (topDesc) topDesc.textContent = "إدارة بيانات العمال والسلف ودورات القبض الشهرية";
+                await window.elSharqPages.show("workers");
+                break;
+            case "reservations":
+                if (topTitle) topTitle.textContent = "حجوزات العملاء";
+                if (topEyebrow) topEyebrow.textContent = "حجز الأصناف";
+                if (topDesc) topDesc.textContent = "تسجيل العربون ومتابعة الكميات المحجوزة وتسليمها";
+                await window.elSharqPages.show("reservations");
+                break;
+            case "quick-transactions":
+                if (topTitle) topTitle.textContent = "المعاملات السريعة";
+                if (topEyebrow) topEyebrow.textContent = "بيع ومرتجع نقدي";
+                if (topDesc) topDesc.textContent = "بيع ومرتجع من المعرض دون فاتورة عميل";
+                await window.elSharqPages.show("quickTransactions");
+                break;
+
             case "plumbing-orders":
             case "طلبية السباكة":
             case "طلبات السباكة":
@@ -247,6 +305,14 @@ menuItems.forEach((item) => {
                 await window.elSharqPages.show("customers");
                 break;
 
+            case "receivables":
+            case "المستحقات":
+                if (topTitle) topTitle.textContent = "المستحقات";
+                if (topEyebrow) topEyebrow.textContent = "حسابات العملاء";
+                if (topDesc) topDesc.textContent = "إجمالي المبالغ المتبقية ومواعيد التحصيل";
+                await window.elSharqPages.show("receivables");
+                break;
+
             case "suppliers":
             case "الموردين":
                 if (topTitle) topTitle.textContent = "الموردين";
@@ -261,6 +327,13 @@ menuItems.forEach((item) => {
                 if (topEyebrow) topEyebrow.textContent = "الحسابات النقدية";
                 if (topDesc) topDesc.textContent = "إدارة حركة الأموال والخزنة";
                 await window.elSharqPages.show("cashier");
+                break;
+
+            case "expenses":
+                if (topTitle) topTitle.textContent = "المصروفات";
+                if (topEyebrow) topEyebrow.textContent = "المصروفات اليومية";
+                if (topDesc) topDesc.textContent = "تسجيل ومراجعة مصروفات المحل";
+                await window.elSharqPages.show("expenses");
                 break;
 
             case "reports":
@@ -304,50 +377,7 @@ function setupInterfaceMotion() {
         reveal();
     }
 
-    const finePointer = window.matchMedia?.("(pointer: fine)").matches;
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!finePointer || reduceMotion) return;
 
-    const halo = document.createElement("div");
-    halo.className = "pointer-halo";
-    halo.setAttribute("aria-hidden", "true");
-    const dot = document.createElement("div");
-    dot.className = "pointer-dot";
-    dot.setAttribute("aria-hidden", "true");
-    document.body.append(halo, dot);
-
-    let targetX = -100;
-    let targetY = -100;
-    let currentX = -100;
-    let currentY = -100;
-    let pointerFrame = null;
-
-    const followPointer = () => {
-        currentX += (targetX - currentX) * 0.2;
-        currentY += (targetY - currentY) * 0.2;
-        halo.style.transform = `translate3d(${currentX}px, ${currentY}px, 0) translate(-50%, -50%)`;
-        pointerFrame = window.requestAnimationFrame(followPointer);
-    };
-
-    document.addEventListener("pointermove", (event) => {
-        targetX = event.clientX;
-        targetY = event.clientY;
-        dot.style.transform = `translate3d(${targetX}px, ${targetY}px, 0) translate(-50%, -50%)`;
-        halo.classList.add("is-visible");
-        dot.classList.add("is-visible");
-        halo.classList.toggle(
-            "is-action",
-            Boolean(event.target.closest("button, a, input, select, textarea, [role='button'], .menu-item"))
-        );
-        if (!pointerFrame) followPointer();
-    }, { passive: true });
-
-    window.addEventListener("blur", () => {
-        halo.classList.remove("is-visible");
-        dot.classList.remove("is-visible");
-    });
-    document.addEventListener("pointerdown", () => halo.classList.add("is-pressed"));
-    document.addEventListener("pointerup", () => halo.classList.remove("is-pressed"));
 }
 
 async function showDashboard() {
@@ -359,9 +389,9 @@ async function showDashboard() {
             <div>
                 <span class="small-label">لوحة متابعة الشرق</span>
                 <h3>نظرة واضحة على مبيعاتك اليومية</h3>
-                <p>أرقام فعلية من فواتير البيع المسجلة، تتحدث عند فتح الرئيسية.</p>
+                <p>أرقام فعلية من المبيعات والفواتير والبيع السريع، تتحدث عند فتح الرئيسية.</p>
             </div>
-            <div class="welcome-icon" aria-hidden="true">ش</div>
+            <div class="welcome-icon welcome-logo-wrap" aria-hidden="true"><img class="welcome-logo" src="assets/el-sharq-logo.png" alt=""></div>
         </div>
 
         <div class="stats-grid">
@@ -400,7 +430,7 @@ async function showDashboard() {
                 <div>
                     <span class="analytics-eyebrow">تحليل المبيعات</span>
                     <h3 id="salesAnalyticsTitle">حركة آخر 7 أيام</h3>
-                    <p>الإجمالي اليومي للفواتير المكتملة من قاعدة بيانات الشرق</p>
+                    <p>الإجمالي اليومي للمبيعات المسجلة من قاعدة بيانات الشرق</p>
                 </div>
                 <div class="sales-trend" id="salesTrend" aria-live="polite">
                     <span class="trend-label">مقارنة بأمس</span>
@@ -564,7 +594,7 @@ async function showDashboard() {
             x: chartLeft + (index * (chartRight - chartLeft)) / (dailySales.length - 1),
             y: chartBottom - (day.total / maxSales) * (chartBottom - chartTop)
         }));
-        const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+        const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")} ${point.y.toFixed(1).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")}`).join(" ");
         const areaPath = `${linePath} L ${chartRight} ${chartBottom} L ${chartLeft} ${chartBottom} Z`;
         document.getElementById("salesTrendChart").innerHTML = `
             <svg viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="none" aria-hidden="true">
@@ -686,9 +716,8 @@ async function showProductsPage() {
                         </tr>
                     </thead>
                     <tbody id="productsTableBody">
-                        ${
-                            products.length === 0
-                                ? `
+                        ${products.length === 0
+            ? `
                                 <tr>
                                     <td colspan="10">
                                         <div class="table-empty">
@@ -699,11 +728,11 @@ async function showProductsPage() {
                                     </td>
                                 </tr>
                                 `
-                                : products
-                                      .map((product) => {
-                                          const details = renderProductDetails(product);
-                                          const isActive = Number(product.active) === 1;
-                                          return `
+            : products
+                .map((product) => {
+                    const details = renderProductDetails(product);
+                    const isActive = Number(product.active) === 1;
+                    return `
                                             <tr data-product-active="${isActive ? "1" : "0"}" ${isActive ? "" : 'hidden data-inactive-product="1"'}>
                                                 <td>${product.id}</td>
                                                 <td class="product-name-cell"><strong>${escapeHtml(product.name)}</strong></td>
@@ -725,9 +754,9 @@ async function showProductsPage() {
                                                 </td>
                                             </tr>
                                           `;
-                                      })
-                                      .join("")
-                        }
+                })
+                .join("")
+        }
                     </tbody>
                 </table>
             </div>
@@ -842,7 +871,7 @@ function renderProductDetails(product) {
         if (l && w) out += `${l}×${w} سم`;
         if (t) out += (out ? " | " : "") + `${t} بلاطة/كرتون`;
         if (l && w && t) {
-            const area = ((l * w * t) / 10000).toFixed(2);
+            const area = ((l * w * t) / 10000).toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
             out += ` | ${area} م²`;
         }
         return out;
@@ -929,51 +958,46 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                         <select id="productCategory" required>
                             <option value="">اختر القسم</option>
                             ${categories
-                                .map(
-                                    (c) => `
-                                <option value="${c.id}" ${
-                                        editProduct && Number(editProduct.category_id) === Number(c.id)
-                                            ? "selected"
-                                            : ""
-                                    }>${escapeHtml(c.name)}</option>
+            .map(
+                (c) => `
+                                <option value="${c.id}" ${editProduct && Number(editProduct.category_id) === Number(c.id)
+                        ? "selected"
+                        : ""
+                    }>${escapeHtml(c.name)}</option>
                             `
-                                )
-                                .join("")}
+            )
+            .join("")}
                         </select>
                     </div>
                     <div class="form-field">
                         <label>الوحدة</label>
                         <select id="productUnit">
-                            <option value="قطعة" ${
-                                editProduct?.unit === "قطعة" ? "selected" : ""
-                            }>قطعة</option>
-                            <option value="كرتونة" ${
-                                editProduct?.unit === "كرتونة" ? "selected" : ""
-                            }>كرتونة</option>
-                            <option value="متر" ${
-                                editProduct?.unit === "متر" ? "selected" : ""
-                            }>متر</option>
-                            <option value="طقم" ${
-                                editProduct?.unit === "طقم" ? "selected" : ""
-                            }>طقم</option>
+                            <option value="قطعة" ${editProduct?.unit === "قطعة" ? "selected" : ""
+        }>قطعة</option>
+                            <option value="كرتونة" ${editProduct?.unit === "كرتونة" ? "selected" : ""
+        }>كرتونة</option>
+                            <option value="متر" ${editProduct?.unit === "متر" ? "selected" : ""
+        }>متر</option>
+                            <option value="طقم" ${editProduct?.unit === "طقم" ? "selected" : ""
+        }>طقم</option>
                         </select>
                     </div>
                     <div class="form-field" id="purchasePriceFieldWrap">
                         <label>سعر الشراء</label>
                         <div id="purchasePriceInput">
                             <input type="number" id="purchasePrice" min="0" step="0.01" placeholder="0.00" required
-                                value="${formatMoney(editProduct?.purchase_price || 0)}">
+                                value="${editProduct ? formatMoney(Number(editProduct.purchase_price ?? 0)) : ""}">
                         </div>
                     </div>
                     <div class="form-field">
                         <label>سعر البيع</label>
                         <input type="number" id="salePrice" min="0" step="0.01" placeholder="0.00" required
-                            value="${formatMoney(editProduct?.sale_price || 0)}">
+                            value="${editProduct ? formatMoney(Number(editProduct.sale_price ?? 0)) : ""}">
                     </div>
                     <div class="form-field">
                         <label>الحد الأدنى للمخزون</label>
                         <input type="number" id="minStock" min="0" step="0.01"
-                            value="${editProduct?.min_stock ?? 0}">
+                            value="${editProduct ? (editProduct.min_stock ?? "") : ""}">
                     </div>
                 </div>
 
@@ -998,13 +1022,13 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                         <div class="stock-box">
                             <label>🏪 المعرض</label>
                             <input type="number" id="showroomQuantity" min="0" step="0.01"
-                                value="${editProduct?.showroom_quantity ?? 0}">
+                                value="${editProduct ? (editProduct.showroom_quantity ?? "") : ""}">
                             <span id="stockUnitShowroom">${editProduct?.unit || "قطعة"}</span>
                         </div>
                         <div class="stock-box">
                             <label>📦 المخزن</label>
                             <input type="number" id="warehouseQuantity" min="0" step="0.01"
-                                value="${editProduct?.warehouse_quantity ?? 0}">
+                                value="${editProduct ? (editProduct.warehouse_quantity ?? "") : ""}">
                             <span id="stockUnitWarehouse">${editProduct?.unit || "قطعة"}</span>
                         </div>
                     </div>
@@ -1124,21 +1148,12 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                     <option value="متر" ${(productUnitEl.value || editProduct?.unit || "") === "متر" ? "selected" : ""}>متر</option>
                 `;
             }
-            const l = Number(
-                document.getElementById("tileLength")?.value ||
-                    editProduct?.tile_length_cm ||
-                    0
-            );
-            const w = Number(
-                document.getElementById("tileWidth")?.value ||
-                    editProduct?.tile_width_cm ||
-                    0
-            );
-            const t = Number(
-                document.getElementById("tilesPerCarton")?.value ||
-                    editProduct?.tiles_per_carton ||
-                    0
-            );
+            const currentLength = document.getElementById("tileLength")?.value;
+            const currentWidth = document.getElementById("tileWidth")?.value;
+            const currentTilesPerCarton = document.getElementById("tilesPerCarton")?.value;
+            const l = Number(currentLength !== undefined ? currentLength : (editProduct?.tile_length_cm || 0));
+            const w = Number(currentWidth !== undefined ? currentWidth : (editProduct?.tile_width_cm || 0));
+            const t = Number(currentTilesPerCarton !== undefined ? currentTilesPerCarton : (editProduct?.tiles_per_carton || 0));
             const priceUnit = getCeramicPriceUnitFromSelect();
             const inputPrice = Number(salePriceEl.value || 0);
 
@@ -1158,17 +1173,17 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                         <div class="form-field">
                             <label>طول البلاطة سم</label>
                             <input type="number" id="tileLength" min="0" step="0.01"
-                                value="${l || ""}" placeholder="مثال: 60">
+                                value="${escapeAttr(currentLength !== undefined ? currentLength : (l || ""))}" placeholder="مثال: 60">
                         </div>
                         <div class="form-field">
                             <label>عرض البلاطة سم</label>
                             <input type="number" id="tileWidth" min="0" step="0.01"
-                                value="${w || ""}" placeholder="مثال: 60">
+                                value="${escapeAttr(currentWidth !== undefined ? currentWidth : (w || ""))}" placeholder="مثال: 60">
                         </div>
                         <div class="form-field">
                             <label>عدد البلاطات بالكرتونة</label>
                             <input type="number" id="tilesPerCarton" min="0" step="1"
-                                value="${t || ""}" placeholder="مثال: 4">
+                                value="${escapeAttr(currentTilesPerCarton !== undefined ? currentTilesPerCarton : (t || ""))}" placeholder="مثال: 4">
                         </div>
                     </div>
                     <div class="live-summary">
@@ -1176,11 +1191,11 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                         <div class="live-summary-grid">
                             <div class="live-summary-item">
                                 <label>مساحة البلاطة</label>
-                                <strong>${tileArea.toFixed(4)} م²</strong>
+                                <strong>${tileArea.toFixed(4).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")} م²</strong>
                             </div>
                             <div class="live-summary-item">
                                 <label>مساحة الكرتونة</label>
-                                <strong>${cartonArea.toFixed(2)} م²</strong>
+                                <strong>${cartonArea.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")} م²</strong>
                             </div>
                             <div class="live-summary-item">
                                 <label>سعر البلاطة</label>
@@ -1199,10 +1214,25 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                 </div>
             `;
 
+            const updateCeramicSummary = () => {
+                const currentL = Number(document.getElementById("tileLength")?.value || 0);
+                const currentW = Number(document.getElementById("tileWidth")?.value || 0);
+                const currentT = Number(document.getElementById("tilesPerCarton")?.value || 0);
+                const { tileArea: area, cartonArea: boxArea, cartonPrice: boxPrice,
+                    tilePrice: piecePrice, meterPrice: squareMeterPrice } = calcCeramicPrices(
+                    Number(salePriceEl.value || 0), getCeramicPriceUnitFromSelect(), currentL, currentW, currentT
+                );
+                const values = specialtyArea.querySelectorAll(".live-summary-item strong");
+                if (values.length >= 5) {
+                    values[0].textContent = `${area.toFixed(4).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")} م²`;
+                    values[1].textContent = `${boxArea.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")} م²`;
+                    values[2].textContent = `${formatMoney(piecePrice)} ج.م`;
+                    values[3].textContent = `${formatMoney(squareMeterPrice)} ج.م`;
+                    values[4].textContent = `${formatMoney(boxPrice)} ج.م`;
+                }
+            };
             ["tileLength", "tileWidth", "tilesPerCarton"].forEach((id) => {
-                document.getElementById(id)?.addEventListener("input", () => {
-                    renderSpecialty();
-                });
+                document.getElementById(id)?.addEventListener("input", updateCeramicSummary);
             });
         } else if (cat === "سباكة") {
             const salePriceValue = Number(salePriceEl?.value);
@@ -1266,7 +1296,7 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                         <div class="form-field">
                             <label>نسبة خصم الشركة %</label>
                             <input type="number" id="companyDiscount" min="0" max="100" step="0.01"
-                                value="${clampedDiscount}" required placeholder="مثال: 25">
+                                value="${discountInput ? escapeAttr(discountInput.value) : (editProduct ? clampedDiscount : "")}" required placeholder="مثال: 25">
                         </div>
                     </div>
                     <div class="live-summary plumbing">
@@ -1277,21 +1307,21 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                                 <strong>${formatMoney(salePrice)} ج.م</strong>
                             </div>
                             <div class="live-summary-item">
-                                <label>سعر الشراء ${isPurchasePriceUnlocked ? "(يدوي)" : `بعد خصم ${clampedDiscount.toFixed(2)}%`}</label>
+                                <label>سعر الشراء ${isPurchasePriceUnlocked ? "(يدوي)" : `بعد خصم ${clampedDiscount.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")}%`}</label>
                                 <strong>${formatMoney(
-                                    isPurchasePriceUnlocked
-                                        ? Number(document.getElementById("purchasePrice")?.value || 0)
-                                        : purchaseAuto
-                                )} ج.م</strong>
+                isPurchasePriceUnlocked
+                    ? Number(document.getElementById("purchasePrice")?.value || 0)
+                    : purchaseAuto
+            )} ج.م</strong>
                             </div>
                             <div class="live-summary-item">
                                 <label>الربح</label>
                                 <strong>${formatMoney(
-                                    salePrice -
-                                        (isPurchasePriceUnlocked
-                                            ? Number(document.getElementById("purchasePrice")?.value || 0)
-                                            : purchaseAuto)
-                                )} ج.م</strong>
+                salePrice -
+                (isPurchasePriceUnlocked
+                    ? Number(document.getElementById("purchasePrice")?.value || 0)
+                    : purchaseAuto)
+            )} ج.م</strong>
                             </div>
                         </div>
                     </div>
@@ -1313,12 +1343,16 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
             document.getElementById("purchasePrice")?.addEventListener("input", updatePurchaseSummary);
             document
                 .getElementById("companyDiscount")
-                ?.addEventListener("input", () => {
-                    let v = Number(document.getElementById("companyDiscount").value || 0);
-                    if (v < 0) v = 0;
-                    if (v > 100) v = 100;
-                    document.getElementById("companyDiscount").value = v;
+                ?.addEventListener("input", (event) => {
+                    const input = event.currentTarget;
+                    if (input.value !== "") {
+                        let v = Number(input.value);
+                        if (v < 0) v = 0;
+                        if (v > 100) v = 100;
+                        if (v !== Number(input.value)) input.value = String(v);
+                    }
                     renderSpecialty();
+                    document.getElementById("companyDiscount")?.focus({ preventScroll: true });
                 });
         } else if (cat === "أدوات صحية" || cat === "خلاطات") {
             const initialType = isSetEditMode ? "set" : "single";
@@ -1327,7 +1361,7 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                 if (editProduct?.items && editProduct.items.length) {
                     setPieces = editProduct.items.map((i) => ({ ...i }));
                 } else {
-                    setPieces = [{ product_id: "", quantity: 1 }];
+                    setPieces = [{ product_id: "", quantity: "" }];
                 }
             }
 
@@ -1341,24 +1375,23 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                             <select class="set-piece-product" data-idx="${idx}">
                                 <option value="">اختر قطعة</option>
                                 ${sanitaryProducts
-                                    .map(
-                                        (p) => `
+                                .map(
+                                    (p) => `
                                     <option value="${p.id}"
                                         data-price="${p.sale_price}"
-                                        ${
-                                            Number(piece.product_id) === Number(p.id)
-                                                ? "selected"
-                                                : ""
+                                        ${Number(piece.product_id) === Number(p.id)
+                                            ? "selected"
+                                            : ""
                                         }
                                     >${escapeHtml(p.name)} - ${escapeHtml(
                                             p.internal_code || ""
                                         )}</option>
                                 `
-                                    )
-                                    .join("")}
+                                )
+                                .join("")}
                             </select>
                             <input type="number" min="1" step="1" class="set-piece-qty" data-idx="${idx}"
-                                value="${piece.quantity || 1}">
+                                value="${piece.quantity ?? ""}">
                             <button type="button" class="set-piece-remove" data-idx="${idx}"
                                 ${setPieces.length === 1 ? "disabled style='opacity:.4;cursor:not-allowed'" : ""}>
                                 ✕
@@ -1378,7 +1411,7 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                 wrapper.querySelectorAll(".set-piece-qty").forEach((inp) => {
                     inp.addEventListener("input", (e) => {
                         const idx = Number(e.target.dataset.idx);
-                        setPieces[idx].quantity = Math.max(1, Number(e.target.value) || 1);
+                        setPieces[idx].quantity = e.target.value === "" ? "" : Number(e.target.value);
                         updateSetTotal();
                     });
                 });
@@ -1388,7 +1421,7 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                         const idx = Number(e.target.dataset.idx);
                         setPieces.splice(idx, 1);
                         if (setPieces.length === 0)
-                            setPieces = [{ product_id: "", quantity: 1 }];
+                            setPieces = [{ product_id: "", quantity: "" }];
                         renderSetPieces();
                         updateSetTotal();
                     });
@@ -1403,7 +1436,7 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                     const p = sanitaryProducts.find(
                         (x) => Number(x.id) === Number(piece.product_id)
                     );
-                    if (p) total += Number(p.sale_price || 0) * Number(piece.quantity || 1);
+                    if (p) total += Number(p.sale_price || 0) * Number(piece.quantity || 0);
                 });
                 const saleInput = document.getElementById("salePrice");
                 const currentVal = Number(saleInput.value || 0);
@@ -1418,21 +1451,18 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                 <div class="set-picker-section">
                     <div class="set-type-radio">
                         <label>
-                            <input type="radio" name="setType" value="single" ${
-                                initialType === "single" ? "checked" : ""
-                            }>
+                            <input type="radio" name="setType" value="single" ${initialType === "single" ? "checked" : ""
+                }>
                             منتج فردي
                         </label>
                         <label>
-                            <input type="radio" name="setType" value="set" ${
-                                initialType === "set" ? "checked" : ""
-                            }>
+                            <input type="radio" name="setType" value="set" ${initialType === "set" ? "checked" : ""
+                }>
                             طقم مكون
                         </label>
                     </div>
-                    <div id="setPiecesArea" style="${
-                        initialType === "set" ? "" : "display:none"
-                    }">
+                    <div id="setPiecesArea" style="${initialType === "set" ? "" : "display:none"
+                }">
                         <div id="setPiecesWrapper"></div>
                         <button type="button" class="set-piece-add" id="addSetPieceBtn">
                             + إضافة قطعة
@@ -1459,7 +1489,7 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                     if (t === "set") {
                         area.style.display = "";
                         if (setPieces.length === 0)
-                            setPieces = [{ product_id: "", quantity: 1 }];
+                            setPieces = [{ product_id: "", quantity: "" }];
                         renderSetPieces();
                     } else {
                         area.style.display = "none";
@@ -1486,12 +1516,12 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
                 actualInput.innerHTML = `
                     <input type="number" id="purchasePrice" min="0" step="0.01" placeholder="0.00" required
                         value="${formatMoney(
-                            Number(
-                                document.getElementById("purchasePrice")?.value ||
-                                    editProduct?.purchase_price ||
-                                    0
-                            )
-                        )}">
+                    Number(
+                        document.getElementById("purchasePrice")?.value ||
+                        editProduct?.purchase_price ||
+                        0
+                    )
+                )}">
                 `;
             }
             isPurchasePriceUnlocked = false;
@@ -1675,24 +1705,37 @@ async function showAddProductModal(optionalProductId, optionalSetId, returnToPag
     });
 }
 
-async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
+async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit, searchTerm = "") {
     const panel = document.getElementById(targetId);
     if (!panel) return;
     let sales = [];
     try {
-        sales = (await window.elSharq.getSales(filter)) || [];
+        sales = (await window.elSharq.getSales(filter, searchTerm)) || [];
     } catch (error) {
         console.error("Invoices loading error:", error);
         panel.innerHTML = `<div class="product-form-message error">تعذر تحميل الفواتير: ${escapeHtml(error?.message || "خطأ غير معروف")}</div>`;
         return;
     }
 
+    const cleanSearchTerm = String(searchTerm || "").trim();
     panel.innerHTML = `
         <div class="last-invoices-panel-header">
             <div>
                 <h3>${filter === "plumbing_order" ? "آخر طلبيات السباكة" : "آخر فواتير المبيعات"}</h3>
-                <span>أحدث ${sales.length} فاتورة</span>
+                <span>${cleanSearchTerm ? `نتائج البحث: ${sales.length} فاتورة` : `أحدث ${sales.length} فاتورة`}</span>
             </div>
+            <label class="invoice-search-wrap">
+                <span class="invoice-search-icon" aria-hidden="true">⌕</span>
+                <input
+                    type="search"
+                    class="invoice-search-input"
+                    data-invoice-search
+                    value="${escapeHtml(cleanSearchTerm)}"
+                    placeholder="ابحث باسم العميل أو رقم الفاتورة"
+                    aria-label="ابحث باسم العميل أو رقم الفاتورة"
+                    autocomplete="off"
+                >
+            </label>
         </div>
         <div class="last-invoices-table-wrapper">
             <table class="last-invoices-table">
@@ -1708,26 +1751,25 @@ async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${
-                        sales.length === 0
-                            ? `
+                    ${sales.length === 0
+            ? `
                             <tr>
                                 <td colspan="7">
                                     <div class="table-empty" style="min-height:160px;">
                                         <div>📭</div>
-                                        <strong>لا توجد فواتير حتى الآن</strong>
-                                        <span>أضف فاتورة جديدة لتظهر هنا</span>
+                                        <strong>${cleanSearchTerm ? "لا توجد فواتير مطابقة" : "لا توجد فواتير حتى الآن"}</strong>
+                                        <span>${cleanSearchTerm ? "جرّب اسم العميل أو رقم الفاتورة" : "أضف فاتورة جديدة لتظهر هنا"}</span>
                                     </div>
                                 </td>
                             </tr>
                             `
-                            : sales
-                                  .map((s) => {
-                                      const dateStr = s.created_at
-                                          ? new Date(s.created_at).toLocaleDateString("ar-EG")
-                                          : "-";
-                                      const rem = Number(s.remaining || 0);
-                                      return `
+            : sales
+                .map((s) => {
+                    const dateStr = s.created_at
+                        ? new Date(s.created_at).toLocaleDateString("ar-EG")
+                        : "-";
+                    const rem = Number(s.remaining || 0);
+                    return `
                                         <tr>
                                             <td>
                                                 <span class="invoice-link" data-sale-id="${s.id}">
@@ -1736,25 +1778,24 @@ async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
                                             </td>
                                             <td>${dateStr}</td>
                                             <td>${escapeHtml(
-                                                filter === "plumbing_order"
-                                                    ? s.customer_name || "-"
-                                                    : s.customer_name || "عميل نقدي"
-                                            )}</td>
+                        filter === "plumbing_order"
+                            ? s.customer_name || "-"
+                            : s.customer_name || "عميل نقدي"
+                    )}</td>
                                             <td><strong>${formatMoney(s.total)} ج.م</strong></td>
                                             <td>${formatMoney(s.paid)} ج.م</td>
                                             <td>
-                                                <span class="${
-                                                    rem > 0.01
-                                                        ? "remaining-danger"
-                                                        : "remaining-safe"
-                                                }">
+                                                <span class="${rem > 0.01
+                            ? "remaining-danger"
+                            : "remaining-safe"
+                        }">
                                                     ${formatMoney(rem)} ج.م
                                                 </span>
                                             </td>
                                             <td>
                                                 <div class="action-buttons">
-                                                    <button type="button" class="view-btn" data-view-id="${s.id}">
-                                                        🖨 طباعة
+                                                    <button type="button" class="view-btn" data-preview-id="${s.id}">
+                                                        👁 معاينة
                                                     </button>
                                                     <button type="button" class="edit-btn" data-edit-id="${s.id}">
                                                         ✏️ تعديل
@@ -1766,13 +1807,29 @@ async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
                                             </td>
                                         </tr>
                                       `;
-                                  })
-                                  .join("")
-                    }
+                })
+                .join("")
+        }
                 </tbody>
             </table>
         </div>
     `;
+
+    const searchInput = panel.querySelector("[data-invoice-search]");
+    let searchTimer;
+    searchInput?.addEventListener("input", () => {
+        const nextSearch = searchInput.value;
+        const cursor = searchInput.selectionStart ?? nextSearch.length;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => {
+            await renderLastInvoicesPanel(targetId, filter, pageContext, onEdit, nextSearch);
+            const nextInput = panel.querySelector("[data-invoice-search]");
+            if (nextInput) {
+                nextInput.focus();
+                nextInput.setSelectionRange(cursor, cursor);
+            }
+        }, 250);
+    });
 
     panel.querySelectorAll('[data-edit-id]').forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -1790,7 +1847,7 @@ async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
             try {
                 await window.elSharq.deleteSale(sale.id, password);
                 window.alert("تم حذف الفاتورة وإرجاع أثرها على المخزون والحسابات.");
-                await renderLastInvoicesPanel(targetId, filter, pageContext, onEdit);
+                await renderLastInvoicesPanel(targetId, filter, pageContext, onEdit, cleanSearchTerm);
             } catch (error) {
                 console.error("Invoice deletion error:", error);
                 window.alert(error?.message || "تعذر حذف الفاتورة");
@@ -1798,9 +1855,9 @@ async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
         });
     });
 
-    panel.querySelectorAll('[data-view-id]').forEach((btn) => {
+    panel.querySelectorAll('[data-preview-id]').forEach((btn) => {
         btn.addEventListener("click", async () => {
-            const id = Number(btn.getAttribute("data-view-id"));
+            const id = Number(btn.getAttribute("data-preview-id"));
             let printWindow;
             try {
                 printWindow = window.elSharqInvoicePrint.open();
@@ -1811,15 +1868,29 @@ async function renderLastInvoicesPanel(targetId, filter, pageContext, onEdit) {
                     partyName: sale.customer_name || "عميل نقدي",
                     discount: Number(sale.plumbing_discount_amount || 0) + Number(sale.general_discount_amount || 0),
                     items: sale.items.map((item) => {
-                        const displayQuantity = getCeramicDisplayQty(item);
+                        const fallback = getCeramicDisplayQty(item);
                         return {
                             ...item,
-                            displayQuantity: displayQuantity.qty,
-                            displayUnit: displayQuantity.unit,
-                            unitPrice: item.unitPrice || item.unit_price
+                            displayQuantity: Number(
+                                item.display_quantity ?? fallback.qty ?? item.quantity ?? 0
+                            ),
+                            displayUnit:
+                                item.display_unit ||
+                                fallback.unit ||
+                                item.product_unit ||
+                                item.unit ||
+                                "قطعة",
+                            unitPrice: Number(
+                                item.display_unit_price ??
+                                item.unitPrice ??
+                                item.unit_price ??
+                                0
+                            ),
+                            total: Number(item.total ?? item.total_amount ?? 0)
                         };
+
                     })
-                });
+                }, { autoPrint: false });
             } catch (e) {
                 if (printWindow && !printWindow.closed) printWindow.close();
                 alert(e.message || "تعذرت طباعة الفاتورة");
@@ -1861,6 +1932,8 @@ async function showSalesPage() {
     }
 
     let editingSaleId = null;
+    let activeSaleForReturns = null;
+    let returnLocations = [];
 
     dashboard.innerHTML = `
         <div class="page-header">
@@ -1923,6 +1996,10 @@ async function showSalesPage() {
                         <option value="المخزن">المخزن</option>
                     </select>
                 </div>
+                <div class="form-field">
+                    <label for="saleDueDate">ميعاد السداد / التذكير (اختياري)</label>
+                    <input type="date" id="saleDueDate">
+                </div>
             </div>
 
             <div class="sale-add-product extended" id="saleAddProductRow">
@@ -1936,8 +2013,8 @@ async function showSalesPage() {
                     <select id="saleProduct">
                         <option value="">اختر المنتج</option>
                         ${productSets
-                            .map(
-                                (s) => `
+            .map(
+                (s) => `
                             <option value="set-${s.id}"
                                 data-price="${s.sale_price}"
                                 data-unit="طقم"
@@ -1947,12 +2024,12 @@ async function showSalesPage() {
                                 [طقم] ${s.category_name ? escapeHtml(s.category_name) + " " : ""}${escapeHtml(s.name)}
                             </option>
                         `
-                            )
-                            .join("")}
+            )
+            .join("")}
                         ${products
-                            .filter((product) => Number(product.active) === 1)
-                            .map(
-                                (product) => `
+            .filter((product) => Number(product.active) === 1)
+            .map(
+                (product) => `
                             <option value="${product.id}"
                                 data-price="${product.sale_price}"
                                 data-unit="${escapeAttr(product.unit || "قطعة")}"
@@ -1965,18 +2042,17 @@ async function showSalesPage() {
                                 data-is-set="0">
                                 ${product.category_name ? escapeHtml(product.category_name) + " " : ""}${escapeHtml(product.name)}
                                 ${product.barcode ? ` — ${escapeHtml(product.barcode)}` : ""}
-                                ${
-                                    product.category_name === "سيراميك" &&
-                                    product.tile_length_cm &&
-                                    product.tile_width_cm
-                                        ? ` — ${product.tile_length_cm}×${product.tile_width_cm}`
-                                        : ""
-                                }
+                                ${product.category_name === "سيراميك" &&
+                        product.tile_length_cm &&
+                        product.tile_width_cm
+                        ? ` — ${product.tile_length_cm}×${product.tile_width_cm}`
+                        : ""
+                    }
                                 — ${escapeHtml(product.internal_code || "")}
                             </option>
                         `
-                            )
-                            .join("")}
+            )
+            .join("")}
                     </select>
                 </div>
                 <div id="ceramicUnitField" class="form-field" style="display:none">
@@ -2015,11 +2091,11 @@ async function showSalesPage() {
                 </div>
                 <div class="form-field" id="regularQtyField">
                     <label id="saleQuantityLabel">الكمية</label>
-                    <input type="number" id="saleQuantity" min="0.01" step="0.01" value="1">
+                    <input type="number" id="saleQuantity" min="0.01" step="0.01" value="">
                 </div>
                 <div class="form-field" id="salePriceField">
                     <label id="saleUnitPriceLabel">سعر البيع</label>
-                    <input type="number" id="saleUnitPrice" min="0" step="0.01" value="0">
+                    <input type="number" id="saleUnitPrice" min="0" step="0.01" value="">
                 </div>
                 <div class="sale-add-button-wrap">
                     <button class="primary-button" id="addSaleItemButton" type="button">
@@ -2055,6 +2131,27 @@ async function showSalesPage() {
                 </table>
             </div>
 
+            <section id="saleReturnSection" class="sale-return-section" hidden>
+                <div class="sale-return-heading">
+                    <div>
+                        <h3>مرتجعات الفاتورة</h3>
+                        <p>أدخل كمية كل صنف مرتجع وحدد مكان إرجاعه. بيانات البيع الأصلية تظل محفوظة.</p>
+                    </div>
+                </div>
+                <div id="saleReturnLockNotice" class="sale-return-lock" hidden>
+                    توجد مرتجعات مسجلة على الفاتورة. لا يمكن تعديل أصناف البيع، ويمكنك تسجيل مرتجع إضافي.
+                </div>
+                <div id="saleReturnHistory" class="sale-return-history"></div>
+                <div id="saleReturnItems" class="sale-return-items"></div>
+                <div class="sale-return-notes">
+                    <label for="saleReturnNotes">ملاحظات المرتجع (اختياري)</label>
+                    <textarea id="saleReturnNotes" rows="2" placeholder="سبب أو تفاصيل المرتجع"></textarea>
+                </div>
+                <div class="sale-return-actions">
+                    <button class="primary-button" id="createSaleReturnButton" type="button">حفظ المرتجع</button>
+                    <span>يُخصم المرتجع من باقي الحساب أولًا، وأي زيادة تُرد من الخزنة.</span>
+                </div>
+            </section>
             <div class="sale-bottom-grid">
                 <div class="sale-notes">
                     <div class="form-field">
@@ -2069,7 +2166,7 @@ async function showSalesPage() {
                     </div>
                     <div class="total-row plumbing-discount">
                         <span>خصم السباكة %</span>
-                        <input type="number" id="plumbingDiscount" min="0" max="100" step="0.01" value="0">
+                        <input type="number" id="plumbingDiscount" min="0" max="100" step="0.01" value="">
                     </div>
                     <div class="total-row">
                         <span>قيمة خصم السباكة</span>
@@ -2082,7 +2179,8 @@ async function showSalesPage() {
                     <div class="payment-section">
                         <div class="form-field">
                             <label>المدفوع</label>
-                            <input type="number" id="salePaid" min="0" step="0.01" value="0">
+                            <input type="number" id="salePaid" min="0" step="0.01" value="">
+                            <button type="button" class="secondary-button sale-pay-all-button" id="salePayAllButton">تم الدفع بالكامل</button>
                         </div>
                         <div class="remaining-box">
                             <span>المتبقي</span>
@@ -2141,7 +2239,7 @@ async function showSalesPage() {
     const syncCeramicPrices = () => {
         const d = getCeramicData();
         if (!d) {
-            saleUnitPrice.value = "0";
+            saleUnitPrice.value = "";
             return;
         }
         const isCeramic = d.category === "سيراميك" && !d.value.startsWith("set-");
@@ -2200,7 +2298,7 @@ async function showSalesPage() {
             if (source === "carton") {
                 if (effectiveTiles > 0) {
                     tileV = cartonV * effectiveTiles;
-                    if (tileEl) tileEl.value = tileV === 0 ? "" : (Number.isInteger(tileV) ? String(tileV) : tileV.toFixed(2));
+                    if (tileEl) tileEl.value = tileV === 0 ? "" : (Number.isInteger(tileV) ? String(tileV) : tileV.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1"));
                 }
                 if (effectiveCartonArea > 0) {
                     meterV = cartonV * effectiveCartonArea;
@@ -2209,18 +2307,18 @@ async function showSalesPage() {
                 } else if (tileV > 0 && tileArea > 0) {
                     meterV = tileV * tileArea;
                 }
-                if (meterEl) meterEl.value = meterV === 0 ? "" : meterV.toFixed(2);
+                if (meterEl) meterEl.value = meterV === 0 ? "" : meterV.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
             } else if (source === "tile") {
                 if (effectiveTiles > 0) {
                     cartonV = tileV / effectiveTiles;
-                    if (cartonEl) cartonEl.value = cartonV === 0 ? "" : cartonV.toFixed(2);
+                    if (cartonEl) cartonEl.value = cartonV === 0 ? "" : cartonV.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 } else if (cartonV > 0) {
                     effectiveTiles = tileV / cartonV;
                     saveInferredTileRatio(effectiveTiles);
                 }
                 if (tileArea > 0) {
                     meterV = tileV * tileArea;
-                    if (meterEl) meterEl.value = meterV === 0 ? "" : meterV.toFixed(2);
+                    if (meterEl) meterEl.value = meterV === 0 ? "" : meterV.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 }
             } else if (source === "meter") {
                 if (effectiveCartonArea > 0) {
@@ -2230,12 +2328,12 @@ async function showSalesPage() {
                 }
                 if (cartonEl) {
                     if (cartonV > 0 || (meterEl && Number(meterEl.value || 0) > 0)) {
-                        cartonEl.value = cartonV === 0 ? "" : cartonV.toFixed(2);
+                        cartonEl.value = cartonV === 0 ? "" : cartonV.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                     }
                 }
                 if (tileArea > 0) {
                     tileV = meterV / tileArea;
-                    if (tileEl) tileEl.value = tileV === 0 ? "" : (Number.isInteger(tileV) ? String(tileV) : tileV.toFixed(2));
+                    if (tileEl) tileEl.value = tileV === 0 ? "" : (Number.isInteger(tileV) ? String(tileV) : tileV.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1"));
                 }
                 if (!effectiveTiles || effectiveTiles <= 0) {
                     if (tileV > 0 && cartonV > 0) {
@@ -2259,7 +2357,7 @@ async function showSalesPage() {
             regularQtyField.style.display = "";
             saleQuantityLabel.textContent = "الكمية";
             saleUnitPriceLabel.textContent = "سعر البيع";
-            saleUnitPrice.value = "0";
+            saleUnitPrice.value = "";
             return;
         }
         const category = sel.dataset.category || "";
@@ -2282,7 +2380,7 @@ async function showSalesPage() {
             const unit = sel.dataset.unit || "قطعة";
             saleQuantityLabel.textContent = unit === "متر" ? "الكمية (متر)" : `الكمية (${unit})`;
             saleUnitPriceLabel.textContent = unit === "متر" ? "سعر البيع للمتر" : `سعر البيع للوحدة (${unit})`;
-            document.getElementById("saleQuantity").value = "1";
+            document.getElementById("saleQuantity").value = "";
             syncCeramicPrices();
         }
     };
@@ -2446,11 +2544,10 @@ async function showSalesPage() {
                         <strong>${escapeHtml(item.name)}</strong>
                     </td>
                     <td>${escapeHtml(item.unit)}</td>
-                    <td>${
-                        item.displayQty !== undefined
-                            ? (Number.isInteger(item.displayQty) ? item.displayQty : item.displayQty.toFixed(2))
-                            : (Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2))
-                    }</td>
+                    <td>${item.displayQty !== undefined
+                    ? (Number.isInteger(item.displayQty) ? item.displayQty : item.displayQty.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1"))
+                    : (Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1"))
+                }</td>
                     <td>${formatMoney(item.unitPrice)} ج.م</td>
                     <td>${formatMoney(item.total)} ج.م</td>
                     <td>
@@ -2505,27 +2602,27 @@ async function showSalesPage() {
             const effCartonArea = tileArea * effTiles;
             if (cartonQtyRaw > 0 && !tileQtyRaw && effTiles > 0 && !meterQtyRaw) {
                 const t = cartonQtyRaw * effTiles;
-                document.getElementById("saleQtyTile").value = Number.isInteger(t) ? String(t) : t.toFixed(2);
+                document.getElementById("saleQtyTile").value = Number.isInteger(t) ? String(t) : t.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 if (effCartonArea > 0) {
                     const m = cartonQtyRaw * effCartonArea;
-                    document.getElementById("saleQtyMeter").value = m.toFixed(2);
+                    document.getElementById("saleQtyMeter").value = m.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 } else if (tileArea > 0) {
                     const m = t * tileArea;
-                    document.getElementById("saleQtyMeter").value = m.toFixed(2);
+                    document.getElementById("saleQtyMeter").value = m.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 }
             } else if (tileQtyRaw > 0 && !cartonQtyRaw && effTiles > 0 && !meterQtyRaw) {
                 const c = tileQtyRaw / effTiles;
-                document.getElementById("saleQtyCarton").value = c.toFixed(2);
+                document.getElementById("saleQtyCarton").value = c.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 if (tileArea > 0) {
                     const m = tileQtyRaw * tileArea;
-                    document.getElementById("saleQtyMeter").value = m.toFixed(2);
+                    document.getElementById("saleQtyMeter").value = m.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 }
             } else if (meterQtyRaw > 0 && !cartonQtyRaw && !tileQtyRaw && tileArea > 0) {
                 const t = meterQtyRaw / tileArea;
-                document.getElementById("saleQtyTile").value = Number.isInteger(t) ? String(t) : t.toFixed(2);
+                document.getElementById("saleQtyTile").value = Number.isInteger(t) ? String(t) : t.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 if (effTiles > 0) {
                     const c = meterQtyRaw / (tileArea * effTiles);
-                    document.getElementById("saleQtyCarton").value = c.toFixed(2);
+                    document.getElementById("saleQtyCarton").value = c.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
                 }
             }
             const cartonEl = document.getElementById("saleQtyCarton");
@@ -2656,7 +2753,7 @@ async function showSalesPage() {
                     const pricePer =
                         set.sale_price > 0 && set.items.length
                             ? Math.round((lineTotal / set.items.reduce((s, it) => s + Number(it.quantity || 1), 0)) *
-                              Number(piece.quantity || 1) * 100) / 100
+                                Number(piece.quantity || 1) * 100) / 100
                             : Math.round(Number(pr.sale_price || 0) * Number(piece.quantity || 1) * 100) / 100;
 
                     const existing = saleItems.find(
@@ -2712,7 +2809,7 @@ async function showSalesPage() {
         }
 
         saleProduct.value = "";
-        document.getElementById("saleQuantity").value = "1";
+        document.getElementById("saleQuantity").value = "";
         const qCarton = document.getElementById("saleQtyCarton");
         const qTile = document.getElementById("saleQtyTile");
         const qMeter = document.getElementById("saleQtyMeter");
@@ -2720,7 +2817,7 @@ async function showSalesPage() {
         if (qTile) qTile.value = "";
         if (qMeter) qMeter.value = "";
         saleSearchInput.value = "";
-        saleUnitPrice.value = "0";
+        saleUnitPrice.value = "";
         ceramicUnitField.style.display = "none";
         regularQtyField.style.display = "";
         lastCeramicQtySource = "carton";
@@ -2729,6 +2826,20 @@ async function showSalesPage() {
 
     document.getElementById("plumbingDiscount")?.addEventListener("input", updateSaleTotals);
     document.getElementById("salePaid")?.addEventListener("input", updateSaleTotals);
+    document.getElementById("salePayAllButton")?.addEventListener("click", () => {
+        const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
+        const plumbingItemsForTotal = saleItems.filter((item) => {
+            const product = products.find((entry) => Number(entry.id) === Number(item.productId));
+            return product && product.category_name === "سباكة";
+        });
+        const plumbingSubtotal = plumbingItemsForTotal.reduce((sum, item) => sum + item.total, 0);
+        let discountPercent = Number(document.getElementById("plumbingDiscount")?.value || 0);
+        discountPercent = Math.min(100, Math.max(0, discountPercent));
+        const finalTotal = subtotal - (plumbingSubtotal * discountPercent) / 100;
+        const paidInput = document.getElementById("salePaid");
+        paidInput.value = finalTotal.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
+        updateSaleTotals();
+    });
 
     function updateSaleTotals() {
         const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
@@ -2745,7 +2856,10 @@ async function showSalesPage() {
         if (discountPercent < 0) discountPercent = 0;
         if (discountPercent > 100) discountPercent = 100;
         const discountAmount = (plumbingSubtotal * discountPercent) / 100;
-        const grandTotal = subtotal - discountAmount;
+        const returnTotal = editingSaleId && Array.isArray(activeSaleForReturns?.returns)
+            ? activeSaleForReturns.returns.reduce((sum, entry) => sum + Number(entry.total_amount || 0), 0)
+            : 0;
+        const grandTotal = Math.max(subtotal - discountAmount - returnTotal, 0);
         const paid = Number(document.getElementById("salePaid")?.value || 0);
         const remaining = Math.max(grandTotal - paid, 0);
 
@@ -2757,45 +2871,246 @@ async function showSalesPage() {
         document.getElementById("saleRemaining").textContent = `${formatMoney(remaining)} ج.م`;
     }
 
+    function formatReturnQuantity(value) {
+        const number = Number(value || 0);
+        return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
+    }
+
+    function renderSaleReturnsSection() {
+        const section = document.getElementById("saleReturnSection");
+        if (!section) return;
+        const sale = activeSaleForReturns;
+        section.hidden = !sale;
+        if (!sale) return;
+
+        const returns = Array.isArray(sale.returns) ? sale.returns : [];
+        const history = document.getElementById("saleReturnHistory");
+        const itemsHost = document.getElementById("saleReturnItems");
+        const lockNotice = document.getElementById("saleReturnLockNotice");
+        const saveSaleButton = document.getElementById("saveSaleButton");
+
+        if (lockNotice) lockNotice.hidden = returns.length === 0;
+        if (saveSaleButton && editingSaleId) {
+            saveSaleButton.disabled = returns.length > 0;
+            saveSaleButton.title = returns.length > 0
+                ? "لا يمكن تعديل الفاتورة بعد تسجيل مرتجع"
+                : "";
+        }
+
+        if (history) {
+            history.innerHTML = returns.length
+                ? returns.map((entry) => `
+                    <article class="sale-return-card">
+                        <div class="sale-return-card-heading">
+                            <strong>${escapeHtml(entry.return_number || `مرتجع ${entry.id}`)}</strong>
+                            <span>${escapeHtml(entry.created_at || "")}</span>
+                            <strong>${formatMoney(Number(entry.total_amount || 0))} ج.م</strong>
+                        </div>
+                        <div class="sale-return-lines">
+                            ${(entry.items || []).map((item) => `
+                                <div class="sale-return-history-line">
+                                    <span>${escapeHtml(item.product_name || "صنف")}</span>
+                                    <span>${formatReturnQuantity(item.display_quantity ?? item.quantity)} ${escapeHtml(item.display_unit || "")}</span>
+                                    <span>${escapeHtml(item.location_name || "")}</span>
+                                    <strong>${formatMoney(Number(item.total_amount || 0))} ج.م</strong>
+                                </div>
+                            `).join("")}
+                        </div>
+                        <div class="sale-return-card-summary">
+                            <span>خصم من الحساب: ${formatMoney(Number(entry.balance_credit_amount || 0))} ج.م</span>
+                            <span>رد نقدي: ${formatMoney(Number(entry.cash_refund_amount || 0))} ج.م</span>
+                            ${entry.notes ? `<span>ملاحظات: ${escapeHtml(entry.notes)}</span>` : ""}
+                        </div>
+                    </article>
+                `).join("")
+                : `<div class="sale-return-empty">لا توجد مرتجعات مسجلة على هذه الفاتورة.</div>`;
+        }
+
+        if (!itemsHost) return;
+        const returnedBySaleItem = new Map();
+        for (const entry of returns) {
+            for (const item of (entry.items || [])) {
+                const saleItemId = Number(item.sale_item_id);
+                if (!Number.isFinite(saleItemId)) continue;
+                const qty = Number(item.display_quantity ?? item.quantity ?? 0);
+                returnedBySaleItem.set(saleItemId, Number(returnedBySaleItem.get(saleItemId) || 0) + qty);
+            }
+        }
+
+        const locations = Array.isArray(returnLocations) ? returnLocations : [];
+        const saleItemsForReturn = Array.isArray(sale.items) ? sale.items : [];
+        if (!saleItemsForReturn.length) {
+            itemsHost.innerHTML = `<div class="sale-return-empty">لا توجد أصناف في هذه الفاتورة.</div>`;
+            return;
+        }
+
+        itemsHost.innerHTML = `
+            <div class="sale-return-table-wrap">
+                <table class="sale-return-table">
+                    <thead><tr>
+                        <th>الصنف</th><th>الوحدة</th><th>المباع</th>
+                        <th>مرتجع سابقًا</th><th>كمية المرتجع الآن</th><th>مكان إضافة المرتجع</th>
+                    </tr></thead>
+                    <tbody>
+                        ${saleItemsForReturn.map((item) => {
+                            const saleItemId = Number(item.id);
+                            const oldDisplay = item.display_quantity == null ? getCeramicDisplayQty(item) : null;
+                            const unit = item.display_unit || oldDisplay?.unit || item.product_unit || item.unit || "قطعة";
+                            const soldQty = Number(item.display_quantity ?? oldDisplay?.qty ?? item.quantity ?? 0);
+                            const alreadyReturned = Number(returnedBySaleItem.get(saleItemId) || 0);
+                            const remaining = Math.max(0, soldQty - alreadyReturned);
+                            const defaultReturnLocationId = Number(
+                                locations.find((location) => location.name === "المخزن")?.id ||
+                                locations[0]?.id ||
+                                0
+                            );
+                            const options = locations.length
+                                ? locations.map((location) => `
+                                    <option value="${Number(location.id)}" ${Number(location.id) === defaultReturnLocationId ? "selected" : ""}>${escapeHtml(location.name || "")}</option>
+                                `).join("")
+                                : `<option value="">لا توجد مواقع نشطة</option>`;
+                            return `
+                                <tr class="sale-return-row">
+                                    <td><strong>${escapeHtml(item.name || item.product_name || "صنف")}</strong></td>
+                                    <td>${escapeHtml(unit)}</td>
+                                    <td>${formatReturnQuantity(soldQty)}</td>
+                                    <td>${formatReturnQuantity(alreadyReturned)}</td>
+                                    <td>
+                                        <input class="sale-return-quantity" data-sale-item-id="${saleItemId}"
+                                            type="number" min="0" max="${remaining}" step="0.01" value=""
+                                            ${remaining <= 0.000001 ? "disabled" : ""}>
+                                        <small>المتبقي: ${formatReturnQuantity(remaining)} ${escapeHtml(unit)}</small>
+                                    </td>
+                                    <td>
+                                        <select class="sale-return-location" data-sale-item-id="${saleItemId}"
+                                            ${remaining <= 0.000001 || !locations.length ? "disabled" : ""}>${options}</select>
+                                    </td>
+                                </tr>`;
+                        }).join("")}
+                    </tbody>
+                </table>
+            </div>
+            ${locations.length ? "" : `<div class="sale-return-warning">تعذر تحميل مواقع المخزون؛ لا يمكن حفظ المرتجع قبل توفر موقع نشط.</div>`}
+        `;
+    }
+
+    document.getElementById("createSaleReturnButton")?.addEventListener("click", async () => {
+        if (!activeSaleForReturns) return;
+        const rows = Array.from(document.querySelectorAll("#saleReturnItems .sale-return-row"));
+        const items = rows.map((row) => {
+            const quantityInput = row.querySelector(".sale-return-quantity");
+            const locationSelect = row.querySelector(".sale-return-location");
+            return {
+                sale_item_id: Number(quantityInput?.dataset.saleItemId),
+                display_quantity: Number(quantityInput?.value || 0),
+                location_id: Number(locationSelect?.value)
+            };
+        }).filter((item) => item.display_quantity > 0);
+
+        if (!items.length) {
+            window.alert("أدخل كمية مرتجع لصنف واحد على الأقل.");
+            return;
+        }
+        if (items.some((item) => !Number.isInteger(item.location_id) || item.location_id <= 0)) {
+            window.alert("اختر مكان إرجاع لكل صنف.");
+            return;
+        }
+        const button = document.getElementById("createSaleReturnButton");
+        const notes = document.getElementById("saleReturnNotes")?.value.trim() || "";
+        try {
+            button.disabled = true;
+            button.textContent = "جاري حفظ المرتجع...";
+            const result = await window.elSharq.createSaleReturn(activeSaleForReturns.id, { items, notes });
+            if (!result?.success) throw new Error("تعذر حفظ المرتجع.");
+            window.alert(
+                `تم تسجيل المرتجع ${result.returnNumber}` +
+                `\nالقيمة: ${formatMoney(Number(result.totalAmount || 0))} ج.م` +
+                `\nالمخصوم من الحساب: ${formatMoney(Number(result.balanceCreditAmount || 0))} ج.م` +
+                `\nالمردود نقدًا: ${formatMoney(Number(result.cashRefundAmount || 0))} ج.م`
+            );
+            document.getElementById("saleReturnNotes").value = "";
+            activeSaleForReturns = await window.elSharq.getSaleById(activeSaleForReturns.id);
+            renderSaleReturnsSection();
+            updateSaleTotals();
+        } catch (error) {
+            console.error("Sale return error:", error);
+            window.alert(error?.message || "تعذر حفظ المرتجع.");
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = "حفظ المرتجع";
+            }
+        }
+    });
+
     async function loadSaleIntoForm(id) {
         try {
             const sale = await window.elSharq.getSaleById(id);
+            activeSaleForReturns = sale;
+            try {
+                returnLocations = await window.elSharq.getLocations();
+            } catch (locationError) {
+                console.error("Return locations loading error:", locationError);
+                returnLocations = [];
+            }
             editingSaleId = sale.id;
-            document.getElementById("saleFormTitle").textContent = `تعديل فاتورة بيع رقم ${
-                sale.invoice_number || sale.id
-            }`;
+            document.getElementById("saleFormTitle").textContent = `تعديل فاتورة بيع رقم ${sale.invoice_number || sale.id
+                }`;
             document.getElementById("saleInvoiceNumberDisplay").textContent =
                 sale.invoice_number || sale.id;
             document.getElementById("saveSaleButton").textContent = "حفظ التعديلات";
             document.getElementById("saleCustomer").value = sale.customer_name || "";
             document.getElementById("saleLocation").value = sale.location || "المعرض";
+            document.getElementById("saleDueDate").value = sale.due_date || "";
             document.getElementById("saleNotes").value = sale.notes || "";
             document.getElementById("plumbingDiscount").value =
                 sale.plumbing_discount_percent || 0;
             document.getElementById("salePaid").value = sale.paid || 0;
             saleItems = (sale.items || []).map((i) => {
-                const productUnit = i.unit || "قطعة";
-                const q = Number(i.quantity);
-                const up = Number(i.unitPrice || i.unit_price);
-                const isCeramicLike = productUnit === "كرتونة" || productUnit === "بلاطة" || productUnit === "متر";
-                const disp = isCeramicLike ? getCeramicDisplayQty(i) : null;
-                const displayUnit = disp ? disp.unit : productUnit;
-                const displayQty = disp ? disp.qty : (Number.isInteger(q) ? q : Math.round(q * 100) / 100);
+                const productUnit = i.product_unit || i.unit || "قطعة";
+                const stockQuantity = Number(i.quantity || 0);
+                const isCeramicLike =
+                    productUnit === "كرتونة" ||
+                    productUnit === "بلاطة" ||
+                    productUnit === "متر";
+
+                const oldDisplay = isCeramicLike ? getCeramicDisplayQty(i) : null;
+
+                const displayUnit =
+                    i.display_unit ||
+                    oldDisplay?.unit ||
+                    productUnit;
+
+                const displayQuantity = Number(
+                    i.display_quantity ??
+                    oldDisplay?.qty ??
+                    stockQuantity
+                );
+
+                const displayUnitPrice = Number(
+                    i.display_unit_price ??
+                    i.unitPrice ??
+                    i.unit_price ??
+                    0
+                );
+
                 return {
                     productId: Number(i.productId || i.product_id),
                     name: i.name,
                     unit: displayUnit,
-                    quantity: displayQty,
-                    unitPrice: Math.round(up * 100) / 100,
-                    total: Math.round(Number(i.total || 0) * 100) / 100,
+                    quantity: displayQuantity,
+                    unitPrice: Math.round(displayUnitPrice * 100) / 100,
+                    total: Math.round(Number(i.total || i.total_amount || 0) * 100) / 100,
                     isSet: false,
                     ceramicDisplayUnit: isCeramicLike ? displayUnit : "",
                     ceramicUnitNote: "",
-                    displayQty: displayQty,
-                    stockQty: q
+                    displayQty: displayQuantity,
+                    stockQty: stockQuantity
                 };
             });
+
             renderSaleItems();
+            renderSaleReturnsSection();
             document.querySelector(".sales-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (e) {
             console.error(e);
@@ -2805,15 +3120,20 @@ async function showSalesPage() {
 
     function resetSaleForm() {
         editingSaleId = null;
+        activeSaleForReturns = null;
         saleItems = [];
+        document.getElementById("saveSaleButton").disabled = false;
+        document.getElementById("saveSaleButton").title = "";
+        renderSaleReturnsSection();
         document.getElementById("saleFormTitle").textContent = "فاتورة بيع جديدة";
         document.getElementById("saleInvoiceNumberDisplay").textContent = "تلقائي";
         document.getElementById("saveSaleButton").textContent = "حفظ الفاتورة";
         document.getElementById("saleCustomer").value = "";
         document.getElementById("saleLocation").value = "المعرض";
+        document.getElementById("saleDueDate").value = "";
         document.getElementById("saleNotes").value = "";
-        document.getElementById("plumbingDiscount").value = "0";
-        document.getElementById("salePaid").value = "0";
+        document.getElementById("plumbingDiscount").value = "";
+        document.getElementById("salePaid").value = "";
         renderSaleItems();
     }
 
@@ -2826,6 +3146,7 @@ async function showSalesPage() {
         }
         const customerName = document.getElementById("saleCustomer")?.value.trim() || "";
         const location = document.getElementById("saleLocation")?.value || "المعرض";
+        const dueDate = document.getElementById("saleDueDate")?.value || "";
         const notes = document.getElementById("saleNotes")?.value.trim() || "";
         let plumbingDiscount = Number(document.getElementById("plumbingDiscount")?.value || 0);
         const paid = Number(document.getElementById("salePaid")?.value || 0);
@@ -2864,12 +3185,17 @@ async function showSalesPage() {
                     return {
                         product_id: Number(item.productId),
                         quantity: stockQ,
-                        unit_price: baseUnitPrice
+                        unit_price: baseUnitPrice,
+                        display_quantity: Number(item.displayQty ?? item.quantity ?? stockQ),
+                        display_unit: item.ceramicDisplayUnit || item.unit || null,
+                        display_unit_price: Number(item.unitPrice ?? baseUnitPrice)
                     };
+
                 }),
                 plumbing_discount_percent: plumbingDiscount,
                 paid,
-                notes
+                notes,
+                due_date: dueDate
             };
 
             let result;
@@ -2890,13 +3216,27 @@ async function showSalesPage() {
                         partyName: sale.customer_name || "عميل نقدي",
                         discount: Number(sale.plumbing_discount_amount || 0) + Number(sale.general_discount_amount || 0),
                         items: sale.items.map((item) => {
-                            const displayQuantity = getCeramicDisplayQty(item);
+                            const fallback = getCeramicDisplayQty(item);
                             return {
                                 ...item,
-                                displayQuantity: displayQuantity.qty,
-                                displayUnit: displayQuantity.unit,
-                                unitPrice: item.unitPrice || item.unit_price
+                                displayQuantity: Number(
+                                    item.display_quantity ?? fallback.qty ?? item.quantity ?? 0
+                                ),
+                                displayUnit:
+                                    item.display_unit ||
+                                    fallback.unit ||
+                                    item.product_unit ||
+                                    item.unit ||
+                                    "قطعة",
+                                unitPrice: Number(
+                                    item.display_unit_price ??
+                                    item.unitPrice ??
+                                    item.unit_price ??
+                                    0
+                                ),
+                                total: Number(item.total ?? item.total_amount ?? 0)
                             };
+
                         })
                     };
                     window.elSharqInvoicePrint.print(printWindow, displaySale);
@@ -2995,7 +3335,7 @@ async function showPlumbingOrderPage() {
                         <strong>🏷️ بطاقة خصم التاجر %</strong>
                         <div class="form-field">
                             <label>نسبة الخصم</label>
-                            <input type="number" id="traderDiscount" min="0" max="100" step="0.01" value="0"
+                            <input type="number" id="traderDiscount" min="0" max="100" step="0.01" value=""
                                 placeholder="مثال: 15">
                         </div>
                     </div>
@@ -3013,6 +3353,10 @@ async function showPlumbingOrderPage() {
                             <option value="المخزن">المخزن</option>
                         </select>
                     </div>
+                    <div class="form-field">
+                        <label for="plumbingDueDate">ميعاد السداد / التذكير (اختياري)</label>
+                        <input type="date" id="plumbingDueDate">
+                    </div>
                 </div>
 
                 <div class="sale-add-product">
@@ -3026,8 +3370,8 @@ async function showPlumbingOrderPage() {
                         <select id="plumbingProduct">
                             <option value="">اختر المنتج</option>
                             ${plumbingProducts
-                                .map(
-                                    (p) => `
+            .map(
+                (p) => `
                                 <option value="${p.id}"
                                     data-price="${p.sale_price}"
                                     data-unit="${escapeAttr(p.unit || "قطعة")}"
@@ -3037,17 +3381,17 @@ async function showPlumbingOrderPage() {
                                     ${p.category_name ? escapeHtml(p.category_name) + " " : ""}${escapeHtml(p.name)} — ${escapeHtml(p.internal_code || "")}
                                 </option>
                             `
-                                )
-                                .join("")}
+            )
+            .join("")}
                         </select>
                     </div>
                     <div class="form-field">
                         <label id="plumbingQuantityLabel">الكمية</label>
-                        <input type="number" id="plumbingQuantity" min="1" step="1" value="1">
+                        <input type="number" id="plumbingQuantity" min="1" step="1" value="">
                     </div>
                     <div class="form-field">
                         <label id="plumbingUnitPriceLabel">سعر البيع</label>
-                        <input type="number" id="plumbingUnitPrice" min="0" step="0.01" value="0">
+                        <input type="number" id="plumbingUnitPrice" min="0" step="0.01" value="">
                     </div>
                     <div class="sale-add-button-wrap">
                         <button class="primary-button" id="addPlumbingItemBtn" type="button">
@@ -3106,7 +3450,8 @@ async function showPlumbingOrderPage() {
                         <div class="payment-section">
                             <div class="form-field">
                                 <label>المدفوع</label>
-                                <input type="number" id="plumbingPaid" min="0" step="0.01" value="0">
+                                <input type="number" id="plumbingPaid" min="0" step="0.01" value="">
+                                <button type="button" class="secondary-button sale-pay-all-button" id="plumbingPayAllButton">تم الدفع بالكامل</button>
                             </div>
                             <div class="remaining-box">
                                 <span>المتبقي</span>
@@ -3132,8 +3477,12 @@ async function showPlumbingOrderPage() {
 
     const updatePlumbingProduct = () => {
         const sel = pProduct.options[pProduct.selectedIndex];
-        pUnitPrice.value = formatMoney(Number(sel?.dataset.price || 0));
-        const isMeter = sel?.dataset.unit === "متر";
+        if (!sel?.value) {
+            pUnitPrice.value = "";
+            return;
+        }
+        pUnitPrice.value = formatMoney(Number(sel.dataset.price || 0));
+        const isMeter = sel.dataset.unit === "متر";
         pQuantity.min = isMeter ? "0.01" : "1";
         pQuantity.step = isMeter ? "0.01" : "1";
         document.getElementById("plumbingQuantityLabel").textContent =
@@ -3236,7 +3585,7 @@ async function showPlumbingOrderPage() {
                     <td>${index + 1}</td>
                     <td><strong>${escapeHtml(item.name)}</strong></td>
                     <td>${escapeHtml(item.unit)}</td>
-                    <td>${Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2)}</td>
+                    <td>${Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1")}</td>
                     <td>${formatMoney(item.unitPrice)} ج.م</td>
                     <td>${formatMoney(item.total)} ج.م</td>
                     <td>
@@ -3292,7 +3641,7 @@ async function showPlumbingOrderPage() {
         }
 
         pProduct.value = "";
-        document.getElementById("plumbingQuantity").value = "1";
+        document.getElementById("plumbingQuantity").value = "";
         updatePlumbingProduct();
         renderPlumbingItems();
     });
@@ -3305,7 +3654,6 @@ async function showPlumbingOrderPage() {
         let discountPct = Number(document.getElementById("traderDiscount")?.value || 0);
         if (discountPct < 0) discountPct = 0;
         if (discountPct > 100) discountPct = 100;
-        document.getElementById("traderDiscount").value = discountPct;
         const discountAmount = (subtotal * discountPct) / 100;
         const grandTotal = subtotal - discountAmount;
         const paid = Number(document.getElementById("plumbingPaid")?.value || 0);
@@ -3319,18 +3667,28 @@ async function showPlumbingOrderPage() {
         document.getElementById("plumbingRemaining").textContent = `${formatMoney(remaining)} ج.م`;
     }
 
+    document.getElementById("plumbingPayAllButton")?.addEventListener("click", () => {
+        const subtotal = plumbingItems.reduce((sum, item) => sum + item.total, 0);
+        let discountPercent = Number(document.getElementById("traderDiscount")?.value || 0);
+        discountPercent = Math.min(100, Math.max(0, discountPercent));
+        const finalTotal = subtotal - (subtotal * discountPercent) / 100;
+        const paidInput = document.getElementById("plumbingPaid");
+        paidInput.value = finalTotal.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
+        updatePlumbingTotals();
+    });
+
     async function loadPlumbingOrderIntoForm(id) {
         try {
             const sale = await window.elSharq.getSaleById(id);
             editingSaleId = sale.id;
-            document.getElementById("plumbingFormTitle").textContent = `تعديل طلبية سباكة رقم ${
-                sale.invoice_number || sale.id
-            }`;
+            document.getElementById("plumbingFormTitle").textContent = `تعديل طلبية سباكة رقم ${sale.invoice_number || sale.id
+                }`;
             document.getElementById("plumbingOrderNumberDisplay").textContent =
                 sale.invoice_number || sale.id;
             document.getElementById("savePlumbingOrderBtn").textContent = "حفظ تعديلات الطلبية";
             document.getElementById("plumbingTraderName").value = sale.customer_name || "";
             document.getElementById("plumbingLocation").value = sale.location || "المعرض";
+            document.getElementById("plumbingDueDate").value = sale.due_date || "";
             document.getElementById("plumbingNotes").value = sale.notes || "";
             document.getElementById("traderDiscount").value = sale.trader_discount_percent || 0;
             document.getElementById("plumbingPaid").value = sale.paid || 0;
@@ -3368,9 +3726,10 @@ async function showPlumbingOrderPage() {
         document.getElementById("savePlumbingOrderBtn").textContent = "حفظ طلبية السباكة";
         document.getElementById("plumbingTraderName").value = "";
         document.getElementById("plumbingLocation").value = "المعرض";
+        document.getElementById("plumbingDueDate").value = "";
         document.getElementById("plumbingNotes").value = "";
-        document.getElementById("traderDiscount").value = "0";
-        document.getElementById("plumbingPaid").value = "0";
+        document.getElementById("traderDiscount").value = "";
+        document.getElementById("plumbingPaid").value = "";
         renderPlumbingItems();
     }
 
@@ -3391,6 +3750,7 @@ async function showPlumbingOrderPage() {
             return;
         }
         const location = document.getElementById("plumbingLocation")?.value || "المعرض";
+        const dueDate = document.getElementById("plumbingDueDate")?.value || "";
         const notes = document.getElementById("plumbingNotes")?.value.trim() || "";
         let traderDiscount = Number(document.getElementById("traderDiscount")?.value || 0);
         if (traderDiscount < 0) traderDiscount = 0;
@@ -3429,7 +3789,8 @@ async function showPlumbingOrderPage() {
                 })),
                 trader_discount_percent: traderDiscount,
                 paid,
-                notes
+                notes,
+                due_date: dueDate
             };
 
             let result;
@@ -3536,7 +3897,7 @@ function getCeramicDisplayQty(item) {
 
 function formatMoney(value) {
     const number = Number(value || 0);
-    return number.toFixed(2);
+    return number.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
 }
 
 function escapeHtml(value) {

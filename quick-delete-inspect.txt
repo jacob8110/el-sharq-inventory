@@ -1,0 +1,489 @@
+﻿
+
+========== main.js | quickTransactions:(getHistory|getSales|createSale|createStandaloneReturn|createReturn) ==========
+  764: 
+  765:     // =========================
+  766:     // =========================
+  767:     // QUICK TRANSACTIONS: Ù…Ø¨ÙŠØ¹Ø§Øª ÙˆÙ…Ø±ØªØ¬Ø¹Ø§Øª Ù†Ù‚Ø¯ÙŠØ© Ù…Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶
+  768:     // =========================
+  769:     ipcMain.handle("quickTransactions:getSales", () => {
+  770:         const sales = db.prepare(`
+  771:             SELECT id, transaction_number, total_amount, created_at, notes
+  772:             FROM quick_transactions
+  773:             WHERE transaction_type = 'sale'
+  774:             ORDER BY id DESC
+  775:             LIMIT 300
+  776:         `).all();
+  777:         const getItems = db.prepare(`
+  778:             SELECT qi.id AS item_id, qi.product_id, qi.quantity, qi.unit_price,
+  779:                 qi.purchase_price, qi.total_amount, p.name AS product_name, p.unit,
+  780:                 COALESCE((
+  781:                     SELECT SUM(ri.quantity)
+  782:                     FROM quick_transaction_items ri
+  783:                     JOIN quick_transactions rt ON rt.id = ri.transaction_id
+  784:                     WHERE rt.transaction_type = 'return' AND ri.source_item_id = qi.id
+  785:                 ), 0) AS returned_quantity
+  786:             FROM quick_transaction_items qi
+  787:             JOIN products p ON p.id = qi.product_id
+  788:             WHERE qi.transaction_id = ?
+  789:             ORDER BY qi.id
+  790:         `);
+  791:         return sales.map((sale) => ({ ...sale, items: getItems.all(sale.id) }));
+  792:     });
+  793: 
+  794:     ipcMain.handle("quickTransactions:getHistory", () => db.prepare(`
+  795:         SELECT qt.id, qt.transaction_number, qt.transaction_type, qt.source_sale_id,
+  796:             qt.total_amount, qt.notes, qt.created_at,
+  797:             source.transaction_number AS source_sale_number,
+  798:             COUNT(qi.id) AS item_count
+  799:         FROM quick_transactions qt
+  800:         LEFT JOIN quick_transactions source ON source.id = qt.source_sale_id
+  801:         LEFT JOIN quick_transaction_items qi ON qi.transaction_id = qt.id
+  802:         GROUP BY qt.id
+  803:         ORDER BY qt.id DESC
+  804:         LIMIT 100
+  805:     `).all());
+  806: 
+  807:     ipcMain.handle("quickTransactions:createSale", (_event, payload) => db.transaction(() => {
+  808:         if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {
+  809:             throw new Error("Ø£Ø¶Ù ØµÙ†ÙÙ‹Ø§ ÙˆØ§Ø­Ø¯Ù‹Ø§ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„");
+  810:         }
+  811:         const showroom = db.prepare("SELECT id FROM locations WHERE name = 'Ø§Ù„Ù…Ø¹Ø±Ø¶' AND is_active = 1").get();
+  812:         if (!showroom) throw new Error("Ù…ÙƒØ§Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·");
+  813:         const prepared = [];
+  814:         const requested = new Map();
+  815:         let total = 0;
+  816:         for (const input of payload.items) {
+  817:             const productId = Number(input.product_id ?? input.productId);
+  818:             const quantity = Number(input.quantity);
+  819:             if (!Number.isInteger(productId) || productId <= 0) throw new Error("Ø§Ø®ØªØ± ØµÙ†ÙÙ‹Ø§ ØµØ­ÙŠØ­Ù‹Ø§");
+  820:             if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Ø£Ø¯Ø®Ù„ ÙƒÙ…ÙŠØ© ØµØ­ÙŠØ­Ø©");
+  821:             const product = db.prepare(`
+  822:                 SELECT id, name, unit, sale_price, purchase_price
+  823:                 FROM products WHERE id = ? AND is_active = 1
+  824:             `).get(productId);
+  825:             if (!product) throw new Error("Ø£Ø­Ø¯ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·");
+  826:             const nextQty = Number(requested.get(productId) || 0) + quantity;
+  827:             requested.set(productId, nextQty);
+  828:             const lineTotal = Math.round(quantity * Number(product.sale_price || 0) * 100) / 100;
+  829:             if (!Number.isFinite(lineTotal) || lineTotal < 0) throw new Error(`Ø³Ø¹Ø± ${product.name} ØºÙŠØ± ØµØ­ÙŠØ­`);
+  830:             prepared.push({ product, quantity, lineTotal });
+  831:             total += lineTotal;
+  832:         }
+  833:         total = Math.round(total * 100) / 100;
+  834:         if (total <= 0) throw new Error("Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¨ÙŠØ¹ ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±");
+  835:         for (const [productId, quantity] of requested) {
+  836:             const product = prepared.find((item) => item.product.id === productId).product;
+  837:             const stock = db.prepare("SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?").get(productId, showroom.id);
+  838:             if (quantity > Number(stock?.quantity || 0) + 0.000001) {
+  839:                 throw new Error(`Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø© Ù…Ù† "${product.name}" Ø£ÙƒØ¨Ø± Ù…Ù† Ø§Ù„Ù…ØªØ§Ø­ ÙÙŠ Ø§Ù„Ù…Ø¹Ø±Ø¶`);
+  840:             }
+  841:         }
+  842:         const nextId = Number(db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM quick_transactions").get().id);
+  843:         const number = `QS-${String(nextId).padStart(6, "0")}`;
+  844:         const result = db.prepare(`
+  845:             INSERT INTO quick_transactions (transaction_number, transaction_type, total_amount, notes)
+  846:             VALUES (?, 'sale', ?, ?)
+  847:         `).run(number, total, String(payload.notes || "").trim() || null);
+  848:         const transactionId = Number(result.lastInsertRowid);
+  849:         const insertItem = db.prepare(`
+  850:             INSERT INTO quick_transaction_items
+  851:                 (transaction_id, product_id, quantity, unit_price, purchase_price, total_amount)
+  852:             VALUES (?, ?, ?, ?, ?, ?)
+  853:         `);
+  854:         for (const item of prepared) {
+  855:             const productId = Number(item.product.id);
+  856:             db.prepare(`UPDATE stock SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND location_id = ?`)
+  857:                 .run(item.quantity, productId, showroom.id);
+  858:             db.prepare(`
+  859:                 INSERT INTO stock_movements (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)
+  860:                 VALUES (?, ?, 'sale', ?, 'quick_transaction', ?, ?)
+  861:             `).run(productId, showroom.id, -item.quantity, transactionId, `Ø¨ÙŠØ¹ Ø³Ø±ÙŠØ¹ ${number}`);
+  862:             insertItem.run(transactionId, productId, item.quantity, Number(item.product.sale_price || 0), Number(item.product.purchase_price || 0), item.lineTotal);
+  863:         }
+  864:         const account = db.prepare("SELECT id FROM cash_accounts WHERE name = 'Ø§Ù„Ø®Ø²Ù†Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©' AND is_active = 1").get();
+  865:         if (!account) throw new Error("Ø§Ù„Ø®Ø²Ù†Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø© Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·Ø©");
+  866:         db.prepare(`
+  867:             INSERT INTO cash_transactions (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description)
+  868:             VALUES (?, 'quick_sale', 'in', ?, 'quick_transaction', ?, ?)
+  869:         `).run(account.id, total, transactionId, `Ø¨ÙŠØ¹ Ø³Ø±ÙŠØ¹ ${number}`);
+  870:         return { success: true, id: transactionId, transactionNumber: number, totalAmount: total };
+  871:     })());
+  872: 
+  873:     ipcMain.handle("quickTransactions:createReturn", (_event, saleId, payload) => db.transaction(() => {
+  874:         const id = Number(saleId);
+  875:         if (!Number.isInteger(id) || id <= 0) throw new Error("Ø§Ø®ØªØ± Ø¹Ù…Ù„ÙŠØ© Ø¨ÙŠØ¹ ØµØ­ÙŠØ­Ø©");
+  876:         if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) throw new Error("Ø£Ø¯Ø®Ù„ ÙƒÙ…ÙŠØ© Ù…Ø±ØªØ¬Ø¹Ø© Ù„ØµÙ†Ù ÙˆØ§Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„");
+  877:         const sale = db.prepare("SELECT * FROM quick_transactions WHERE id = ? AND transaction_type = 'sale'").get(id);
+  878:         if (!sale) throw new Error("Ø¹Ù…Ù„ÙŠØ© Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ø³Ø±ÙŠØ¹ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
+  879:         const showroom = db.prepare("SELECT id FROM locations WHERE name = 'Ø§Ù„Ù…Ø¹Ø±Ø¶' AND is_active = 1").get();
+  880:         if (!showroom) throw new Error("Ù…ÙƒØ§Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·");
+  881:         const originalItems = db.prepare(`
+  882:             SELECT qi.*, p.name AS product_name,
+  883:                 COALESCE((SELECT SUM(ri.quantity) FROM quick_transaction_items ri
+  884:                     JOIN quick_transactions rt ON rt.id = ri.transaction_id
+  885:                     WHERE rt.transaction_type = 'return' AND ri.source_item_id = qi.id), 0) AS returned_quantity
+  886:             FROM quick_transaction_items qi JOIN products p ON p.id = qi.product_id
+  887:             WHERE qi.transaction_id = ?
+  888:         `).all(id);
+  889:         const byId = new Map(originalItems.map((item) => [Number(item.id), item]));
+  890:         const requests = new Map();
+  891:         for (const input of payload.items) {
+  892:             const sourceItemId = Number(input.quick_sale_item_id ?? input.item_id ?? input.itemId);
+  893:             const original = byId.get(sourceItemId);
+  894:             if (!original) throw new Error("Ø£Ø­Ø¯ Ø§Ù„Ø£ØµÙ†Ø§Ù Ù„Ø§ ÙŠØªØ¨Ø¹ Ø¹Ù…Ù„ÙŠØ© Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ù…Ø­Ø¯Ø¯Ø©");
+  895:             const quantity = Number(input.quantity);
+  896:             if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`ÙƒÙ…ÙŠØ© Ù…Ø±ØªØ¬Ø¹ ${original.product_name} ØºÙŠØ± ØµØ­ÙŠØ­Ø©`);
+  897:             requests.set(sourceItemId, Number(requests.get(sourceItemId) || 0) + quantity);
+  898:         }
+  899:         const prepared = [];
+  900:         let total = 0;
+  901:         for (const [sourceItemId, quantity] of requests) {
+  902:             const original = byId.get(sourceItemId);
+  903:             const remaining = Number(original.quantity) - Number(original.returned_quantity || 0);
+  904:             if (quantity > remaining + 0.000001) throw new Error(`ÙƒÙ…ÙŠØ© Ù…Ø±ØªØ¬Ø¹ ${original.product_name} Ø£ÙƒØ¨Ø± Ù…Ù† Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…ØªØ¨Ù‚ÙŠØ©`);
+  905:             const lineTotal = Math.round(quantity * Number(original.unit_price) * 100) / 100;
+  906:             prepared.push({ original, quantity, lineTotal });
+  907:             total += lineTotal;
+  908:         }
+  909:         total = Math.round(total * 100) / 100;
+  910:         if (total <= 0) throw new Error("Ù‚ÙŠÙ…Ø© Ø§Ù„Ù…Ø±ØªØ¬Ø¹ ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±");
+  911:         const nextId = Number(db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM quick_transactions").get().id);
+  912:         const number = `QR-${String(nextId).padStart(6, "0")}`;
+  913:         const result = db.prepare(`
+  914:             INSERT INTO quick_transactions (transaction_number, transaction_type, source_sale_id, total_amount, notes)
+  915:             VALUES (?, 'return', ?, ?, ?)
+  916:         `).run(number, id, total, String(payload.notes || "").trim() || null);
+  917:         const returnId = Number(result.lastInsertRowid);
+  918:         for (const item of prepared) {
+  919:             const productId = Number(item.original.product_id);
+  920:             db.prepare(`
+  921:                 INSERT INTO quick_transaction_items
+  922:                     (transaction_id, source_item_id, product_id, quantity, unit_price, purchase_price, total_amount)
+  923:                 VALUES (?, ?, ?, ?, ?, ?, ?)
+  924:             `).run(returnId, Number(item.original.id), productId, item.quantity,
+  925:                 Number(item.original.unit_price), Number(item.original.purchase_price || 0), item.lineTotal);
+  926:             db.prepare(`
+  927:                 INSERT INTO stock (product_id, location_id, quantity) VALUES (?, ?, ?)
+  928:                 ON CONFLICT(product_id, location_id) DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = CURRENT_TIMESTAMP
+  929:             `).run(productId, showroom.id, item.quantity);
+  930:             db.prepare(`
+  931:                 INSERT INTO stock_movements (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)
+  932:                 VALUES (?, ?, 'return', ?, 'quick_transaction', ?, ?)
+  933:             `).run(productId, showroom.id, item.quantity, returnId, `Ù…Ø±ØªØ¬Ø¹ Ø³Ø±ÙŠØ¹ ${number} Ù…Ù† ${sale.transaction_number}`);
+  934:         }
+  935:         const account = db.prepare("SELECT id FROM cash_accounts WHERE name = 'Ø§Ù„Ø®Ø²Ù†Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©' AND is_active = 1").get();
+  936:         if (!account) throw new Error("Ø§Ù„Ø®Ø²Ù†Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø© Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·Ø©");
+  937:         db.prepare(`
+  938:             INSERT INTO cash_transactions (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description)
+  939:             VALUES (?, 'quick_return', 'out', ?, 'quick_transaction', ?, ?)
+  940:         `).run(account.id, total, returnId, `Ø±Ø¯ Ù†Ù‚Ø¯ÙŠ Ù„Ù…Ø±ØªØ¬Ø¹ Ø³Ø±ÙŠØ¹ ${number}`);
+  941:         return { success: true, id: returnId, transactionNumber: number, totalAmount: total, sourceSaleNumber: sale.transaction_number };
+  942:     })());
+  943: 
+  944:     // Ù…Ø±ØªØ¬Ø¹ Ø³Ø±ÙŠØ¹ Ù…Ø³ØªÙ‚Ù„ Ø¹Ù† Ø£ÙŠ ÙØ§ØªÙˆØ±Ø© Ø¨ÙŠØ¹.
+  945:     ipcMain.handle("quickTransactions:createStandaloneReturn", (_event, payload) => db.transaction(() => {
+  946:         if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {
+  947:             throw new Error("Ø£Ø¶Ù ØµÙ†ÙÙ‹Ø§ ÙˆØ§Ø­Ø¯Ù‹Ø§ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„");
+  948:         }
+  949: 
+  950:         const showroom = db.prepare(`
+  951:             SELECT id FROM locations
+  952:             WHERE name = 'Ø§Ù„Ù…Ø¹Ø±Ø¶' AND is_active = 1
+  953:         `).get();
+  954: 
+  955:         if (!showroom) throw new Error("Ù…ÙƒØ§Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·");
+  956: 
+  957:         const account = db.prepare(`
+  958:             SELECT id FROM cash_accounts
+  959:             WHERE name = 'Ø§Ù„Ø®Ø²Ù†Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©' AND is_active = 1
+  960:         `).get();
+  961: 
+  962:         if (!account) throw new Error("Ø§Ù„Ø®Ø²Ù†Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø© Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·Ø©");
+  963: 
+  964:         // Ù†Ø¹ØªÙ…Ø¯ Ø¯Ø§Ø¦Ù…Ù‹Ø§ Ø³Ø¹Ø± Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ø­Ø§Ù„ÙŠ Ø§Ù„Ù…Ø³Ø¬Ù„ ÙÙŠ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª.
+  965:         const requested = new Map();
+  966: 
+  967:         for (const input of payload.items) {
+  968:             const productId = Number(input.product_id ?? input.productId);
+  969:             const quantity = Number(input.quantity);
+  970: 
+  971:             if (!Number.isSafeInteger(productId) || productId <= 0) {
+  972:                 throw new Error("Ø§Ø®ØªØ± ØµÙ†ÙÙ‹Ø§ ØµØ­ÙŠØ­Ù‹Ø§");
+  973:             }
+  974: 
+  975:             if (!Number.isFinite(quantity) || quantity <= 0) {
+  976:                 throw new Error("Ø£Ø¯Ø®Ù„ ÙƒÙ…ÙŠØ© Ù…Ø±ØªØ¬Ø¹Ø© ØµØ­ÙŠØ­Ø©");
+  977:             }
+  978: 
+  979:             const product = db.prepare(`
+  980:                 SELECT id, name, unit, sale_price, purchase_price
+  981:                 FROM products
+  982:                 WHERE id = ? AND is_active = 1
+  983:             `).get(productId);
+  984: 
+  985:             if (!product) throw new Error("Ø£Ø­Ø¯ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± Ù†Ø´Ø·");
+  986: 
+  987:             const price = Number(product.sale_price);
+  988:             const cost = Number(product.purchase_price);
+  989: 
+  990:             if (!Number.isFinite(price) || price <= 0) {
+  991:                 throw new Error(`Ø³Ø¹Ø± Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ù…Ø³Ø¬Ù„ Ù„Ù„ØµÙ†Ù "${product.name}" ØºÙŠØ± ØµØ§Ù„Ø­`);
+  992:             }
+  993: 
+  994:             if (!Number.isFinite(cost) || cost < 0) {
+  995:                 throw new Error(`ØªÙƒÙ„ÙØ© Ø§Ù„ØµÙ†Ù "${product.name}" ØºÙŠØ± ØµØ§Ù„Ø­Ø©`);
+  996:             }
+  997: 
+  998:             const existing = requested.get(productId);
+  999: 
+ 1000:             if (existing) {
+ 1001:                 existing.quantity += quantity;
+ 1002:             } else {
+ 1003:                 requested.set(productId, { product, quantity });
+ 1004:             }
+ 1005:         }
+ 1006: 
+ 1007:         const prepared = Array.from(requested.values()).map((item) => ({
+ 1008:             ...item,
+ 1009:             unitPrice: Number(item.product.sale_price),
+ 1010:             purchasePrice: Number(item.product.purchase_price),
+ 1011:             lineTotal: Math.round(
+ 1012:                 item.quantity * Number(item.product.sale_price) * 100
+ 1013:             ) / 100
+ 1014:         }));
+ 1015: 
+ 1016:         const total = Math.round(
+ 1017:             prepared.reduce((sum, item) => sum + item.lineTotal, 0) * 100
+ 1018:         ) / 100;
+ 1019: 
+ 1020:         if (!Number.isFinite(total) || total <= 0) {
+
+========== src\preload.js | getQuickSales|getQuickTransactions|createQuickSale|createQuickReturn|createQuickStandaloneReturn ==========
+   67:         ipcRenderer.invoke("sales:return:create", id, payload),
+   68: 
+   69:     // ====== Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø³Ø±ÙŠØ¹Ø© ======
+   70:     getQuickSales: () => ipcRenderer.invoke("quickTransactions:getSales"),
+   71:     getQuickTransactions: () => ipcRenderer.invoke("quickTransactions:getHistory"),
+   72:     createQuickSale: (sale) => ipcRenderer.invoke("quickTransactions:createSale", sale),
+   73:     createQuickStandaloneReturn: (payload) =>
+   74:         ipcRenderer.invoke("quickTransactions:createStandaloneReturn", payload),
+   75: 
+   76:     createQuickReturn: (saleId, payload) => ipcRenderer.invoke("quickTransactions:createReturn", saleId, payload),
+   77: 
+   78:     // ====== Ø·Ù„Ø¨ÙŠÙ‡ Ø³Ø¨Ø§ÙƒÙ‡ Ù„Ù„ØªØ¬Ø§Ø± ======
+   79:     createPlumbingOrder: (order) =>
+   80:         ipcRenderer.invoke("plumbingOrders:create", order),
+   81: 
+   82:     getPurchases: (filters) =>
+   83:         ipcRenderer.invoke("purchases:getAll", filters),
+
+========== src\renderer\operations.js | async function quickTransactions|createQuickStandaloneReturn|getQuickTransactions|مرتجع نقدي|بيع نقدي|quickReturnSearch|quickReturnSave ==========
+  715:                 window.alert(error?.message || "ØªØ¹Ø°Ø± ØªØ³Ø¬ÙŠÙ„ Ø§Ù„ØªØ­ØµÙŠÙ„.");
+  716:             }
+  717:         });
+  718:     }
+  719: 
+  720:     async function quickTransactions() {
+  721:         const [products, history] = await Promise.all([window.elSharq.getProducts(), window.elSharq.getQuickTransactions()]);
+  722:         const activeProducts = products.filter((product) => Number(product.active) === 1);
+  723:         const page = content("Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø³Ø±ÙŠØ¹Ø©", "Ø¨ÙŠØ¹ Ø³Ø±ÙŠØ¹ Ø£Ùˆ Ù…Ø±ØªØ¬Ø¹ Ù†Ù‚Ø¯ÙŠ Ù…Ø³ØªÙ‚Ù„ Ø¨Ø¯ÙˆÙ† Ø¥Ø«Ø¨Ø§Øª Ø¨ÙŠØ¹. Ø§Ù„Ø­Ø±ÙƒØ© ØªØ®Øµ Ø§Ù„Ù…Ø¹Ø±Ø¶ ÙˆØ§Ù„Ø®Ø²Ù†Ø© ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§.", `
+  724:             <div class="stats-grid">
+  725:                 <div class="stat-card"><div class="stat-icon sales">Ø¨</div><div><span>Ø¨ÙŠØ¹ Ø³Ø±ÙŠØ¹</span><strong>Ù…Ø¯ÙÙˆØ¹ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„</strong><small>Ø§Ù„Ø®ØµÙ… Ù…Ù† Ø±ØµÙŠØ¯ Ø§Ù„Ù…Ø¹Ø±Ø¶</small></div></div>
+  726:                 <div class="stat-card"><div class="stat-icon cash">Ø±</div><div><span>Ù…Ø±ØªØ¬Ø¹ Ø³Ø±ÙŠØ¹</span><strong>Ø±Ø¯ Ù†Ù‚Ø¯ÙŠ</strong><small>Ø§Ù„Ø¥Ø¶Ø§ÙØ© Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø¹Ø±Ø¶ ÙˆØ®ØµÙ… Ø§Ù„Ø®Ø²Ù†Ø©</small></div></div>
+  727:             </div>
+  728:             <div class="quick-transaction-tabs" style="display:flex;gap:10px;margin:18px 0">
+  729:                 <button type="button" class="primary-button" data-quick-tab="sale">Ø¨ÙŠØ¹ Ø³Ø±ÙŠØ¹</button>
+  730:                 <button type="button" class="secondary-button" data-quick-tab="return">Ù…Ø±ØªØ¬Ø¹ Ø³Ø±ÙŠØ¹</button>
+  731:             </div>
+  732:             <section class="sales-panel" data-quick-panel="sale">
+  733:                 <div class="sales-panel-header"><div><h3>ØªØ³Ø¬ÙŠÙ„ Ø¨ÙŠØ¹ Ø³Ø±ÙŠØ¹</h3><span>Ø§Ù„Ø³Ø¹Ø± ÙŠÙØ¤Ø®Ø° ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ù…Ù† Ø³Ø¹Ø± Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ù…Ø³Ø¬Ù„ØŒ ÙˆØ§Ù„Ø¨ÙŠØ¹ ÙŠØ®Ø±Ø¬ Ù…Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶ ÙÙ‚Ø·.</span></div></div>
+  734:                 <div class="sale-add-product">
+  735:                     ${productPicker("quickSaleSearch", "quickSaleDropdown", "quickSaleProduct", activeProducts)}
+  736:                     <div class="form-field"><label for="quickSaleQty">Ø§Ù„ÙƒÙ…ÙŠØ© (${escape("ÙˆØ­Ø¯Ø© Ø§Ù„Ù…Ù†ØªØ¬")})</label><input id="quickSaleQty" type="number" min="0.01" step="0.01" placeholder="Ø§Ù„ÙƒÙ…ÙŠØ©"></div>
+  737:                     <div class="form-field"><label for="quickSalePrice">Ø³Ø¹Ø± Ø§Ù„ÙˆØ­Ø¯Ø© Ø§Ù„Ù…Ø³Ø¬Ù„</label><input id="quickSalePrice" type="text" readonly value=""></div>
+  738:                     <button class="secondary-button" id="quickSaleAdd" type="button">Ø¥Ø¶Ø§ÙØ© Ù„Ù„ØµÙ†Ù</button>
+  739:                 </div>
+  740:                 <div class="last-invoices-table-wrapper"><table class="last-invoices-table"><thead><tr><th>Ø§Ù„ØµÙ†Ù</th><th>Ø§Ù„ÙƒÙ…ÙŠØ©</th><th>Ø§Ù„ÙˆØ­Ø¯Ø©</th><th>Ø³Ø¹Ø± Ø§Ù„ÙˆØ­Ø¯Ø©</th><th>Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ</th><th></th></tr></thead><tbody id="quickSaleItems"><tr><td colspan="6">Ù„Ù… ØªØªÙ… Ø¥Ø¶Ø§ÙØ© Ø£ØµÙ†Ø§Ù</td></tr></tbody></table></div>
+  741:                 <div class="sale-info-grid" style="margin-top:16px"><div class="form-field"><label for="quickSaleNotes">Ù…Ù„Ø§Ø­Ø¸Ø§Øª (Ø§Ø®ØªÙŠØ§Ø±ÙŠ)</label><input id="quickSaleNotes" type="text" placeholder="Ù…Ù„Ø§Ø­Ø¸Ø§Øª Ø¯Ø§Ø®Ù„ÙŠØ©"></div><div class="form-field"><label>Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¯ÙÙˆØ¹ Ù†Ù‚Ø¯Ù‹Ø§</label><strong id="quickSaleTotal">0.00 Ø¬.Ù…</strong></div></div>
+  742:                 <div id="quickSaleMessage" class="product-form-message"></div>
+  743:                 <button class="primary-button" id="quickSaleSave" type="button">Ø­ÙØ¸ Ø§Ù„Ø¨ÙŠØ¹ ÙˆØ§Ø³ØªÙ„Ø§Ù… Ø§Ù„Ù†Ù‚Ø¯ÙŠØ©</button>
+  749:                         <span>Ø¨Ø¯ÙˆÙ† Ø¥Ø«Ø¨Ø§Øª Ø¨ÙŠØ¹. Ø§Ù„Ø³Ø¹Ø± Ù…Ù† Ø³Ø¹Ø± Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ù…Ø³Ø¬Ù„ØŒ ÙˆØ§Ù„ÙƒÙ…ÙŠØ© ØªÙØ¶Ø§Ù Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø¹Ø±Ø¶ØŒ ÙˆØ§Ù„Ù…Ø¨Ù„Øº ÙŠÙØ±Ø¯ Ù†Ù‚Ø¯Ù‹Ø§.</span>
+  750:                     </div>
+  751:                 </div>
+  752: 
+  753:                 <div class="sale-add-product">
+  754:                     ${productPicker("quickReturnSearch", "quickReturnDropdown", "quickReturnProduct", activeProducts)}
+  755:                     <div class="form-field">
+  756:                         <label for="quickReturnQty">Ø§Ù„ÙƒÙ…ÙŠØ© (ÙˆØ­Ø¯Ø© Ø§Ù„Ù…Ù†ØªØ¬)</label>
+  757:                         <input id="quickReturnQty" type="number" min="0.01" step="0.01" placeholder="Ø§Ù„ÙƒÙ…ÙŠØ©">
+  758:                     </div>
+  759:                     <div class="form-field">
+  760:                         <label for="quickReturnPrice">Ø³Ø¹Ø± Ø§Ù„ÙˆØ­Ø¯Ø© Ø§Ù„Ù…Ø³Ø¬Ù„</label>
+  761:                         <input id="quickReturnPrice" type="text" readonly value="">
+  762:                     </div>
+  763:                     <button class="secondary-button" id="quickReturnAdd" type="button">Ø¥Ø¶Ø§ÙØ© Ù„Ù„ØµÙ†Ù</button>
+  764:                 </div>
+  765: 
+  766:                 <div class="last-invoices-table-wrapper">
+  767:                     <table class="last-invoices-table">
+  768:                         <thead><tr><th>Ø§Ù„ØµÙ†Ù</th><th>Ø§Ù„ÙƒÙ…ÙŠØ©</th><th>Ø§Ù„ÙˆØ­Ø¯Ø©</th><th>Ø³Ø¹Ø± Ø§Ù„ÙˆØ­Ø¯Ø©</th><th>Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ</th><th></th></tr></thead>
+  769:                         <tbody id="quickReturnItems"><tr><td colspan="6">Ù„Ù… ØªØªÙ… Ø¥Ø¶Ø§ÙØ© Ø£ØµÙ†Ø§Ù</td></tr></tbody>
+  770:                     </table>
+  771:                 </div>
+  772: 
+  773:                 <div class="sale-info-grid" style="margin-top:16px">
+  774:                     <div class="form-field">
+  775:                         <label for="quickReturnNotes">Ù…Ù„Ø§Ø­Ø¸Ø§Øª (Ø§Ø®ØªÙŠØ§Ø±ÙŠ)</label>
+  776:                         <input id="quickReturnNotes" type="text" placeholder="Ø³Ø¨Ø¨ Ø£Ùˆ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…Ø±ØªØ¬Ø¹">
+  780:                         <strong id="quickReturnTotal">0.00 Ø¬.Ù…</strong>
+  781:                     </div>
+  782:                 </div>
+  783: 
+  784:                 <div id="quickReturnMessage" class="product-form-message"></div>
+  785:                 <button class="primary-button" id="quickReturnSave" type="button" disabled>Ø­ÙØ¸ Ø§Ù„Ù…Ø±ØªØ¬Ø¹ ÙˆØ±Ø¯ Ø§Ù„Ù†Ù‚Ø¯ÙŠØ©</button>
+  786:             </section>
+  787:             <div class="last-invoices-panel"><h3>Ø³Ø¬Ù„ Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø³Ø±ÙŠØ¹Ø©</h3><div class="last-invoices-table-wrapper"><table class="last-invoices-table"><thead><tr><th>Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø¯Ø§Ø®Ù„ÙŠ</th><th>Ø§Ù„Ù†ÙˆØ¹</th><th>Ù…Ø±ØªØ¨Ø· Ø¨Ø¨ÙŠØ¹</th><th>Ø§Ù„ØªØ§Ø±ÙŠØ®</th><th>Ø¹Ø¯Ø¯ Ø§Ù„Ø£ØµÙ†Ø§Ù</th><th>Ø§Ù„Ù‚ÙŠÙ…Ø©</th></tr></thead><tbody>${history.map((entry) => `<tr><td><strong>${escape(entry.transaction_number)}</strong></td><td>${entry.transaction_type === "sale" ? "Ø¨ÙŠØ¹ Ù†Ù‚Ø¯ÙŠ" : "Ù…Ø±ØªØ¬Ø¹ Ù†Ù‚Ø¯ÙŠ"}</td><td>${escape(entry.source_sale_number || "-")}</td><td>${dateText(entry.created_at)}</td><td>${Number(entry.item_count || 0)}</td><td>${entry.transaction_type === "return" ? "-" : "+"}${money(entry.total_amount)} Ø¬.Ù…</td></tr>`).join("") || '<tr><td colspan="6">Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø³Ø±ÙŠØ¹Ø© Ø¨Ø¹Ø¯</td></tr>'}</tbody></table></div></div>
+  788:         `);
+  789:         const saleItems = [];
+  790:         const productSelect = page.querySelector("#quickSaleProduct");
+  791:         setupProductPicker(page, { inputId: "quickSaleSearch", dropdownId: "quickSaleDropdown", selectId: "quickSaleProduct", products: activeProducts });
+  792:         const selectedProduct = () => activeProducts.find((product) => Number(product.id) === Number(productSelect.value));
+  793:         const drawQuickSale = () => {
+  794:             const body = page.querySelector("#quickSaleItems");
+  795:             body.innerHTML = saleItems.length ? saleItems.map((item, index) => `<tr><td>${escape(item.name)}</td><td>${item.quantity}</td><td>${escape(item.unit)}</td><td>${money(item.unit_price)} Ø¬.Ù…</td><td>${money(item.quantity * item.unit_price)} Ø¬.Ù…</td><td><button type="button" class="delete-btn" data-remove-quick-sale="${index}">Ø­Ø°Ù</button></td></tr>`).join("") : '<tr><td colspan="6">Ù„Ù… ØªØªÙ… Ø¥Ø¶Ø§ÙØ© Ø£ØµÙ†Ø§Ù</td></tr>';
+  796:             page.querySelector("#quickSaleTotal").textContent = `${money(saleItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0))} Ø¬.Ù…`;
+  797:         };
+  798:         productSelect.addEventListener("change", () => {
+  799:             const product = selectedProduct();
+  800:             page.querySelector("#quickSalePrice").value = product ? `${money(product.sale_price)} Ø¬.Ù… / ${product.unit || "Ù‚Ø·Ø¹Ø©"}` : "";
+  801:             page.querySelector("#quickSaleQty").value = "";
+  802:             page.querySelector("#quickSaleQty").focus();
+  803:         });
+  804:         page.querySelector("#quickSaleAdd").addEventListener("click", () => {
+  805:             const product = selectedProduct();
+  806:             const quantity = Number(page.querySelector("#quickSaleQty").value);
+  807:             if (!product) return status("quickSaleMessage", "Ø§Ø®ØªØ± ØµÙ†ÙÙ‹Ø§ Ø£ÙˆÙ„Ù‹Ø§", true);
+  835:         });
+  836:         const returnItems = [];
+  837:         const returnProductSelect = page.querySelector("#quickReturnProduct");
+  838: 
+  839:         setupProductPicker(page, {
+  840:             inputId: "quickReturnSearch",
+  841:             dropdownId: "quickReturnDropdown",
+  842:             selectId: "quickReturnProduct",
+  843:             products: activeProducts
+  844:         });
+  845: 
+  846:         const selectedReturnProduct = () =>
+  847:             activeProducts.find(
+  848:                 (product) => Number(product.id) === Number(returnProductSelect.value)
+  849:             );
+  850: 
+  851:         const drawQuickReturn = () => {
+  852:             const body = page.querySelector("#quickReturnItems");
+  853: 
+  854:             body.innerHTML = returnItems.length
+  855:                 ? returnItems.map((item, index) => `
+  856:                     <tr>
+  857:                         <td>${escape(item.name)}</td>
+  858:                         <td>${item.quantity}</td>
+  859:                         <td>${escape(item.unit)}</td>
+  860:                         <td>${money(item.unit_price)} Ø¬.Ù…</td>
+  861:                         <td>${money(item.quantity * item.unit_price)} Ø¬.Ù…</td>
+  862:                         <td><button type="button" class="delete-btn" data-remove-quick-return="${index}">Ø­Ø°Ù</button></td>
+  868:                 (sum, item) => sum + item.quantity * item.unit_price,
+  869:                 0
+  870:             );
+  871: 
+  872:             page.querySelector("#quickReturnTotal").textContent = `${money(total)} Ø¬.Ù…`;
+  873:             page.querySelector("#quickReturnSave").disabled = returnItems.length === 0;
+  874:         };
+  875: 
+  876:         returnProductSelect.addEventListener("change", () => {
+  877:             const product = selectedReturnProduct();
+  878: 
+  879:             page.querySelector("#quickReturnPrice").value = product
+  880:                 ? `${money(product.sale_price)} Ø¬.Ù… / ${product.unit || "Ù‚Ø·Ø¹Ø©"}`
+  881:                 : "";
+  882: 
+  883:             page.querySelector("#quickReturnQty").value = "";
+  884:             page.querySelector("#quickReturnQty").focus();
+  885:         });
+  886: 
+  887:         page.querySelector("#quickReturnAdd").addEventListener("click", () => {
+  888:             const product = selectedReturnProduct();
+  889:             const quantity = Number(page.querySelector("#quickReturnQty").value);
+  890:             const price = Number(product?.sale_price || 0);
+  891: 
+  892:             if (!product) return status("quickReturnMessage", "Ø§Ø®ØªØ± ØµÙ†ÙÙ‹Ø§ Ø£ÙˆÙ„Ù‹Ø§", true);
+  893:             if (!Number.isFinite(quantity) || quantity <= 0) return status("quickReturnMessage", "Ø£Ø¯Ø®Ù„ ÙƒÙ…ÙŠØ© Ù…Ø±ØªØ¬Ø¹Ø© ØµØ­ÙŠØ­Ø©", true);
+  894:             if (!Number.isFinite(price) || price <= 0) return status("quickReturnMessage", "Ø³Ø¹Ø± Ø§Ù„Ø¨ÙŠØ¹ Ø§Ù„Ù…Ø³Ø¬Ù„ Ù„Ù„ØµÙ†Ù ØºÙŠØ± ØµØ§Ù„Ø­", true);
+  895: 
+  909:                 });
+  910:             }
+  911: 
+  912:             status("quickReturnMessage", "");
+  913:             returnProductSelect.value = "";
+  914:             page.querySelector("#quickReturnSearch").value = "";
+  915:             page.querySelector("#quickReturnQty").value = "";
+  916:             page.querySelector("#quickReturnPrice").value = "";
+  917:             drawQuickReturn();
+  918:         });
+  919: 
+  920:         page.querySelector("#quickReturnItems").addEventListener("click", (event) => {
+  921:             const button = event.target.closest("[data-remove-quick-return]");
+  922:             if (!button) return;
+  923: 
+  924:             returnItems.splice(Number(button.dataset.removeQuickReturn), 1);
+  925:             drawQuickReturn();
+  926:         });
+  927: 
+  928:         page.querySelector("#quickReturnSave").addEventListener("click", async (event) => {
+  929:             const button = event.currentTarget;
+  930: 
+  931:             if (!returnItems.length) return status("quickReturnMessage", "Ø£Ø¶Ù ØµÙ†ÙÙ‹Ø§ ÙˆØ§Ø­Ø¯Ù‹Ø§ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„", true);
+  932: 
+  933:             const total = returnItems.reduce(
+  934:                 (sum, item) => sum + item.quantity * item.unit_price,
+  935:                 0
+  936:             );
+  937: 
+  938:             if (!window.confirm(
+  939:                 `Ø³ÙŠØªÙ… Ø±Ø¯ ${money(total)} Ø¬.Ù… Ù†Ù‚Ø¯Ù‹Ø§ Ù„Ù„Ø¹Ù…ÙŠÙ„ ÙˆØ¥Ø¶Ø§ÙØ© Ø§Ù„Ø£ØµÙ†Ø§Ù Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø¹Ø±Ø¶ØŒ Ø¯ÙˆÙ† Ø±Ø¨Ø·Ù‡Ø§ Ø¨ÙØ§ØªÙˆØ±Ø© Ø¨ÙŠØ¹. Ù…ØªØ§Ø¨Ø¹Ø©ØŸ`
+  940:             )) return;
+  941: 
+  942:             button.disabled = true;
+  943: 
+  944:             try {
+  945:                 const result = await window.elSharq.createQuickStandaloneReturn({
+  946:                     items: returnItems.map((item) => ({
+  947:                         product_id: item.product_id,
+  948:                         quantity: item.quantity
+  949:                     })),
+  950:                     notes: page.querySelector("#quickReturnNotes").value
+  951:                 });
+  952: 
+  953:                 window.alert(
+  954:                     `ØªÙ… Ø­ÙØ¸ Ø§Ù„Ù…Ø±ØªØ¬Ø¹ ${result.transactionNumber} ÙˆØ±Ø¯ ${money(result.totalAmount)} Ø¬.Ù… Ù†Ù‚Ø¯Ù‹Ø§.`
+  955:                 );
+  956: 
+  957:                 await quickTransactions();
+  958:             } catch (error) {
+  959:                 fail("quickReturnMessage", error);
+  960:                 button.disabled = returnItems.length === 0;
+  961:             }
+  962:         });
+  963:         page.querySelectorAll("[data-quick-tab]").forEach((button) => button.addEventListener("click", () => {
+  964:             const mode = button.dataset.quickTab;
+  965:             page.querySelectorAll("[data-quick-tab]").forEach((tab) => {
+  966:                 tab.className = tab === button ? "primary-button" : "secondary-button";
+  967:             });
+
+SCHEMA: D:\El-Sharq\El-Sharq\src\database\database.js:172: CREATE TABLE IF NOT EXISTS stock_movements (
+
+SCHEMA: D:\El-Sharq\El-Sharq\src\database\database.js:675: CREATE TABLE IF NOT EXISTS cash_transactions (
+
+SCHEMA: D:\El-Sharq\El-Sharq\src\database\database.js:837: CREATE TABLE IF NOT EXISTS quick_transactions (
+
+SCHEMA: D:\El-Sharq\El-Sharq\src\database\database.js:848: CREATE TABLE IF NOT EXISTS quick_transaction_items (

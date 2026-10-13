@@ -430,6 +430,10 @@ db.exec(`
 
         total_amount REAL NOT NULL DEFAULT 0,
 
+        balance_credit_amount REAL NOT NULL DEFAULT 0,
+
+        cash_refund_amount REAL NOT NULL DEFAULT 0,
+
         notes TEXT,
 
         created_by INTEGER,
@@ -455,11 +459,17 @@ db.exec(`
 
         return_id INTEGER NOT NULL,
 
+        sale_item_id INTEGER NOT NULL,
+
         product_id INTEGER NOT NULL,
 
         location_id INTEGER NOT NULL,
 
         quantity REAL NOT NULL,
+
+        display_quantity REAL NOT NULL DEFAULT 0,
+
+        display_unit TEXT NOT NULL DEFAULT '',
 
         unit_price REAL NOT NULL,
 
@@ -468,6 +478,8 @@ db.exec(`
         FOREIGN KEY (return_id)
             REFERENCES sales_returns(id)
             ON DELETE CASCADE,
+
+        FOREIGN KEY (sale_item_id) REFERENCES sale_items(id) ON DELETE RESTRICT,
 
         FOREIGN KEY (product_id)
             REFERENCES products(id)
@@ -819,6 +831,40 @@ db.exec(`
 
 
     -- ======================================
+    -- المعاملات السريعة (بيع نقدي ومرتجعاته)
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS quick_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_number TEXT NOT NULL UNIQUE,
+        transaction_type TEXT NOT NULL CHECK (transaction_type IN ('sale', 'return')),
+        source_sale_id INTEGER,
+        total_amount REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (source_sale_id) REFERENCES quick_transactions(id) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE IF NOT EXISTS quick_transaction_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER NOT NULL,
+        source_item_id INTEGER,
+        product_id INTEGER NOT NULL,
+        quantity REAL NOT NULL,
+        unit_price REAL NOT NULL,
+        purchase_price REAL NOT NULL DEFAULT 0,
+        total_amount REAL NOT NULL,
+        FOREIGN KEY (transaction_id) REFERENCES quick_transactions(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_item_id) REFERENCES quick_transaction_items(id) ON DELETE RESTRICT,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_quick_transactions_type_date
+        ON quick_transactions(transaction_type, created_at);
+    CREATE INDEX IF NOT EXISTS idx_quick_transaction_items_transaction
+        ON quick_transaction_items(transaction_id);
+
+    -- ======================================
     -- إعدادات النظام
     -- ======================================
 
@@ -905,6 +951,105 @@ function columnExists(tableName, columnName) {
     return row.cnt > 0;
 }
 
+    // Customer reservations: non-destructive, idempotent schema creation.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS reservations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reservation_number TEXT NOT NULL UNIQUE,
+            customer_id INTEGER,
+            customer_name TEXT NOT NULL,
+            customer_phone TEXT,
+            due_date TEXT,
+            notes TEXT,
+            subtotal REAL NOT NULL DEFAULT 0,
+            total_amount REAL NOT NULL DEFAULT 0,
+            paid_amount REAL NOT NULL DEFAULT 0,
+            remaining_amount REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            sale_id INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS reservation_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reservation_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity REAL NOT NULL,
+            unit_price REAL NOT NULL,
+            purchase_price REAL NOT NULL DEFAULT 0,
+            total_amount REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+        );
+
+        CREATE TABLE IF NOT EXISTS reservation_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reservation_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            payment_type TEXT NOT NULL DEFAULT 'payment',
+            cash_account_id INTEGER,
+            sale_id INTEGER,
+            payment_method TEXT NOT NULL DEFAULT 'cash',
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE RESTRICT,
+            FOREIGN KEY (cash_account_id) REFERENCES cash_accounts(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status);
+        CREATE INDEX IF NOT EXISTS idx_reservation_items_product ON reservation_items(product_id);
+        CREATE INDEX IF NOT EXISTS idx_reservation_payments_reservation ON reservation_payments(reservation_id);
+    `);
+    // worker-payroll-schema-v1: non-destructive worker/payroll history tables.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS workers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT,
+            job_title TEXT,
+            monthly_salary REAL NOT NULL DEFAULT 0,
+            start_date TEXT NOT NULL,
+            payroll_start_date TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS worker_payroll_cycles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            due_date TEXT NOT NULL,
+            salary_amount REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'open',
+            payout_amount REAL NOT NULL DEFAULT 0,
+            paid_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(worker_id, period_start),
+            FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE RESTRICT
+        );
+        CREATE TABLE IF NOT EXISTS worker_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER NOT NULL,
+            cycle_id INTEGER NOT NULL,
+            transaction_type TEXT NOT NULL,
+            amount REAL NOT NULL DEFAULT 0,
+            cash_account_id INTEGER,
+            cash_transaction_id INTEGER,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE RESTRICT,
+            FOREIGN KEY (cycle_id) REFERENCES worker_payroll_cycles(id) ON DELETE RESTRICT,
+            FOREIGN KEY (cash_account_id) REFERENCES cash_accounts(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_worker_cycles_worker_due ON worker_payroll_cycles(worker_id, due_date, status);
+        CREATE INDEX IF NOT EXISTS idx_worker_transactions_cycle ON worker_transactions(cycle_id, transaction_type);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_salary_payout_once
+            ON worker_transactions(cycle_id) WHERE transaction_type = 'salary_payout';
+    `);
 // ---------- جدول products: إضافة أعمدة السيراميك والسباكه ----------
 if (!columnExists("products", "tile_length_cm")) {
     db.exec(`ALTER TABLE products ADD COLUMN tile_length_cm REAL DEFAULT NULL`);
@@ -930,10 +1075,22 @@ if (!columnExists("purchase_items", "previous_purchase_price")) {
     db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price REAL DEFAULT NULL`);
     console.log("Migration: Added column previous_purchase_price to purchase_items");
 }
-if (!columnExists("purchase_items", "previous_purchase_price_manual")) {
-    db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price_manual INTEGER DEFAULT NULL`);
-    console.log("Migration: Added column previous_purchase_price_manual to purchase_items");
-}
+    if (!columnExists("purchase_items", "previous_purchase_price_manual")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price_manual INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price_manual to purchase_items");
+    }
+    if (!columnExists("purchase_items", "previous_sale_price")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_sale_price REAL DEFAULT NULL`);
+        console.log("Migration: Added column previous_sale_price to purchase_items");
+    }
+    if (!columnExists("purchase_items", "list_price")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN list_price REAL DEFAULT NULL`);
+        console.log("Migration: Added column list_price to purchase_items");
+    }
+    if (!columnExists("purchase_items", "plumbing_discount_percent")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN plumbing_discount_percent REAL DEFAULT NULL`);
+        console.log("Migration: Added column plumbing_discount_percent to purchase_items");
+    }
 
 // ---------- جدول sales: إضافة updated_at وخصم التاجر لطلبيه السباكه ----------
 if (!columnExists("sales", "updated_at")) {
@@ -952,6 +1109,41 @@ if (!columnExists("sales", "trader_discount_amount")) {
 if (!columnExists("sales", "location_id")) {
     db.exec(`ALTER TABLE sales ADD COLUMN location_id INTEGER DEFAULT NULL REFERENCES locations(id) ON DELETE SET NULL`);
     console.log("Migration: Added column location_id to sales");
+}
+if (!columnExists("sales", "due_date")) {
+    db.exec(`ALTER TABLE sales ADD COLUMN due_date TEXT DEFAULT NULL`);
+    console.log("Migration: Added column due_date to sales");
+}
+
+if (!columnExists("sales", "is_hidden")) {
+    db.exec(`ALTER TABLE sales ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0`);
+    console.log("Migration: Added column is_hidden to sales");
+}
+// ---------- حفظ وحدة وكمية وسعر البيع الظاهر في بند الفاتورة ----------
+if (!columnExists("sale_items", "display_quantity")) {
+    db.exec(`ALTER TABLE sale_items ADD COLUMN display_quantity REAL DEFAULT NULL`);
+}
+if (!columnExists("sale_items", "display_unit")) {
+    db.exec(`ALTER TABLE sale_items ADD COLUMN display_unit TEXT DEFAULT NULL`);
+}
+if (!columnExists("sale_items", "display_unit_price")) {
+    db.exec(`ALTER TABLE sale_items ADD COLUMN display_unit_price REAL DEFAULT NULL`);
+}
+
+if (!columnExists("sales_returns", "balance_credit_amount")) {
+    db.exec(`ALTER TABLE sales_returns ADD COLUMN balance_credit_amount REAL NOT NULL DEFAULT 0`);
+}
+if (!columnExists("sales_returns", "cash_refund_amount")) {
+    db.exec(`ALTER TABLE sales_returns ADD COLUMN cash_refund_amount REAL NOT NULL DEFAULT 0`);
+}
+if (!columnExists("sales_return_items", "sale_item_id")) {
+    db.exec(`ALTER TABLE sales_return_items ADD COLUMN sale_item_id INTEGER DEFAULT NULL`);
+}
+if (!columnExists("sales_return_items", "display_quantity")) {
+    db.exec(`ALTER TABLE sales_return_items ADD COLUMN display_quantity REAL NOT NULL DEFAULT 0`);
+}
+if (!columnExists("sales_return_items", "display_unit")) {
+    db.exec(`ALTER TABLE sales_return_items ADD COLUMN display_unit TEXT NOT NULL DEFAULT ''`);
 }
 
 // ---------- إنشاء جداول الأطقم product_sets + product_set_items ----------

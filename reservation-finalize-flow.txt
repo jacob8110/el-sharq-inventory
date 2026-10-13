@@ -1,0 +1,1104 @@
+
+===== main.js | pattern=ipcMain\.handle\("sales:create" =====
+--- line 1829 ---
+    });
+
+    ipcMain.handle("sales:create", (event, sale) => {
+
+        const transaction = db.transaction(() => {
+
+            // =========================
+            // VALIDATION
+            // =========================
+
+            if (
+                !sale ||
+                !Array.isArray(sale.items) ||
+                sale.items.length === 0
+            ) {
+                throw new Error(
+                    "يجب إضافة صنف واحد على الأقل للفاتورة"
+                );
+            }
+
+
+            const location =
+                sale.location === "المخزن"
+                    ? "المخزن"
+                    : "المعرض";
+
+
+            const customerName =
+                sale.customer_name?.trim() || null;
+
+
+            const notes =
+                sale.notes?.trim() || null;
+
+
+            const dueDate = String(sale.due_date || "").trim() || null;
+
+
+            const plumbingDiscountPercent =
+                Math.max(
+                    0,
+                    Math.min(
+                        100,
+                        Number(
+                            sale.plumbing_discount_percent || 0
+                        )
+                    )
+                );
+
+
+            // =========================
+            // GET LOCATION
+            // =========================
+
+            const locationRow =
+                db.prepare(`
+                SELECT id
+                FROM locations
+                WHERE name = ?
+            `).get(location);
+
+
+            if (!locationRow) {
+
+                throw new Error(
+                    "مكان البيع غير موجود"
+                );
+
+            }
+
+
+            // =========================
+            // CALCULATE TOTALS
+            // =========================
+
+            let subtotal = 0;
+
+            let plumbingSubtotal = 0;
+
+            const preparedItems = [];
+
+
+            for (const item of sale.items) {
+
+                const productId =
+                    Number(item.product_id);
+
+                const quantity =
+                    Number(item.quantity);
+
+                const unitPrice =
+                    Number(item.unit_price);
+
+
+                if (!productId) {
+
+                    throw new Error(
+                        "يوجد صنف غير صحيح في الفاتورة"
+                    );
+
+                }
+
+
+                if (
+                    !quantity ||
+                    quantity <= 0
+                ) {
+
+                    throw new Error(
+                        "كمية أحد الأصناف غير صحيحة"
+                    );
+
+                }
+
+
+                if (
+                    unitPrice < 0 ||
+                    Number.isNaN(unitPrice)
+                ) {
+
+                    throw new Error(
+                        "سعر أحد الأصناف غير صحيح"
+                    );
+
+                }
+
+
+                const product =
+                    db.prepare(`
+                    SELECT
+                        p.id,
+                        p.name,
+                        p.purchase_price,
+                        p.sale_price,
+                        c.name AS category_name
+                    FROM products p
+                    LEFT JOIN categories c
+                        ON c.id = p.category_id
+                    WHERE p.id = ?
+                      AND p.is_active = 1
+                `).get(productId);
+
+
+                if (!product) {
+
+                    throw new Error(
+                        "أحد المنتجات غير موجود أو غير نشط"
+                    );
+
+                }
+
+
+                // =========================
+                // CHECK STOCK
+                // =========================
+
+                const stockRow =
+                    db.prepare(`
+                    SELECT quantity
+                    FROM stock
+                    WHERE product_id = ?
+                      AND location_id = ?
+                `).get(
+                        productId,
+                        locationRow.id
+                    );
+
+
+                const available =
+                    Number(
+                        stockRow?.quantity || 0
+                    );
+
+
+                if (quantity > available) {
+
+                    throw new Error(
+                        `الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`
+                    );
+
+                }
+
+
+-------------------------
+
+===== main.js | pattern=ipcMain\.handle\("sales:update" =====
+--- line 2584 ---
+    // مع الحفاظ على رقم الفاتورة والتاريخ الأصلي
+
+    ipcMain.handle("sales:update", (_e, saleId, sale) => {
+        const transaction = db.transaction(() => {
+            saleId = Number(saleId);
+
+            // تحميل الفاتورة القديمة
+            const oldSale = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(saleId);
+            if (!oldSale) throw new Error("الفاتورة غير موجودة");
+            if (db.prepare("SELECT 1 FROM sales_returns WHERE sale_id = ? LIMIT 1").get(saleId)) {
+                throw new Error("لا يمكن تعديل الفاتورة لوجود مرتجع مرتبط بها");
+            }
+
+            // تحميل الأصناف القديمة
+            const oldItems = db.prepare(`SELECT * FROM sale_items WHERE sale_id = ?`).all(saleId);
+
+            // ============================================
+            // STEP 1: ROLLBACK (ارجاع المخزون القديم)
+            // ============================================
+            for (const it of oldItems) {
+                // ارجاع الكمية للمخزون
+                db.prepare(`
+                UPDATE stock SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
+                WHERE product_id = ? AND location_id = ?
+            `).run(it.quantity, it.product_id, it.location_id);
+
+                // حركة مخزون عكسية (إرجاع)
+                db.prepare(`
+                INSERT INTO stock_movements
+                    (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)
+                VALUES (?, ?, 'return', ?, 'sale', ?, ?)
+            `).run(it.product_id, it.location_id, it.quantity, saleId, "تعديل فاتورة - إرجاع الكمية القديمة");
+            }
+
+            // ============================================
+            // STEP 2: مسح السجلات الثانوية القديمة
+            // ============================================
+            db.prepare(`DELETE FROM sale_items WHERE sale_id = ?`).run(saleId);
+            db.prepare(`DELETE FROM sale_payments WHERE sale_id = ?`).run(saleId);
+            db.prepare(`DELETE FROM customer_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);
+            db.prepare(`DELETE FROM cash_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);
+
+            // ============================================
+            // STEP 3: حساب الفاتورة الجديدة وإعادة تطبيقها
+            // (هذا الكود مكافئ لإنشاء فاتورة جديد لكنه يحدث وليس ينشئ)
+            // ============================================
+            const isPlumbingOrder = oldSale.sale_type === "plumbing_order";
+
+            if (!sale || !Array.isArray(sale.items) || sale.items.length === 0) {
+                throw new Error("يجب إضافة صنف واحد على الأقل للفاتورة");
+            }
+
+            const location = sale.location === "المخزن" ? "المخزن" : "المعرض";
+            const customerName = sale.customer_name?.trim() || null;
+            const notes = sale.notes?.trim() || null;
+            const dueDate = String(sale.due_date || "").trim() || null;
+
+            // خصم طلبيه السباكه (كلي) أو خصم سباكة فواتير عادية (للأصناف)
+            const traderDiscountPercent = Math.max(0, Math.min(100, Number(sale.trader_discount_percent || 0)));
+            const plumbingDiscountPercent = Math.max(0, Math.min(100, Number(sale.plumbing_discount_percent || 0)));
+
+            const locationRow = db.prepare(`SELECT id FROM locations WHERE name = ?`).get(location);
+            if (!locationRow) throw new Error("مكان البيع غير موجود");
+
+            let subtotal = 0;
+            let plumbingSubtotal = 0;
+            const preparedItems = [];
+
+            for (const item of sale.items) {
+                const productId = Number(item.product_id);
+                const quantity = Number(item.quantity);
+                const unitPrice = Number(item.unit_price);
+
+                if (!productId) throw new Error("يوجد صنف غير صحيح");
+                if (!quantity || quantity <= 0) throw new Error("كمية أحد الأصناف غير صحيحة");
+                if (unitPrice < 0 || Number.isNaN(unitPrice)) throw new Error("سعر أحد الأصناف غير صحيح");
+
+                const product = db.prepare(`
+                SELECT p.id, p.name, p.purchase_price, c.name AS category_name
+                FROM products p
+                LEFT JOIN categories c ON c.id = p.category_id
+                WHERE p.id = ? AND p.is_active = 1
+            `).get(productId);
+
+                if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+
+                // إذا كانت طلبيه سباكه: أصناف سباكه فقط
+                if (isPlumbingOrder && product.category_name !== "سباكة") {
+                    throw new Error(`طلبيه سباكه تقبل أصناف سباكه فقط. الصنف "${product.name}" مرفوض`);
+                }
+
+                const stockRow = db.prepare(`
+                SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?
+            `).get(productId, locationRow.id);
+
+                const available = Number(stockRow?.quantity || 0);
+                if (quantity > available) {
+                    throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);
+                }
+
+                const total = quantity * unitPrice;
+                subtotal += total;
+
+-------------------------
+
+===== main.js | pattern=ipcMain\.handle\("quickTransactions:createSale" =====
+--- line 807 ---
+    `).all());
+
+    ipcMain.handle("quickTransactions:createSale", (_event, payload) => db.transaction(() => {
+        if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {
+            throw new Error("أضف صنفًا واحدًا على الأقل");
+        }
+        const showroom = db.prepare("SELECT id FROM locations WHERE name = 'المعرض' AND is_active = 1").get();
+        if (!showroom) throw new Error("مكان المعرض غير موجود أو غير نشط");
+        const prepared = [];
+        const requested = new Map();
+        let total = 0;
+        for (const input of payload.items) {
+            const productId = Number(input.product_id ?? input.productId);
+            const quantity = Number(input.quantity);
+            if (!Number.isInteger(productId) || productId <= 0) throw new Error("اختر صنفًا صحيحًا");
+            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("أدخل كمية صحيحة");
+            const product = db.prepare(`
+                SELECT id, name, unit, sale_price, purchase_price
+                FROM products WHERE id = ? AND is_active = 1
+            `).get(productId);
+            if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+            const nextQty = Number(requested.get(productId) || 0) + quantity;
+            requested.set(productId, nextQty);
+            const lineTotal = Math.round(quantity * Number(product.sale_price || 0) * 100) / 100;
+            if (!Number.isFinite(lineTotal) || lineTotal < 0) throw new Error(`سعر ${product.name} غير صحيح`);
+            prepared.push({ product, quantity, lineTotal });
+            total += lineTotal;
+        }
+        total = Math.round(total * 100) / 100;
+        if (total <= 0) throw new Error("إجمالي البيع يجب أن يكون أكبر من صفر");
+        for (const [productId, quantity] of requested) {
+            const product = prepared.find((item) => item.product.id === productId).product;
+            const stock = db.prepare("SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?").get(productId, showroom.id);
+            if (quantity > Number(stock?.quantity || 0) + 0.000001) {
+                throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في المعرض`);
+            }
+        }
+        const nextId = Number(db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM quick_transactions").get().id);
+        const number = `QS-${String(nextId).padStart(6, "0")}`;
+        const result = db.prepare(`
+            INSERT INTO quick_transactions (transaction_number, transaction_type, total_amount, notes)
+            VALUES (?, 'sale', ?, ?)
+        `).run(number, total, String(payload.notes || "").trim() || null);
+        const transactionId = Number(result.lastInsertRowid);
+        const insertItem = db.prepare(`
+            INSERT INTO quick_transaction_items
+                (transaction_id, product_id, quantity, unit_price, purchase_price, total_amount)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        for (const item of prepared) {
+            const productId = Number(item.product.id);
+            db.prepare(`UPDATE stock SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND location_id = ?`)
+                .run(item.quantity, productId, showroom.id);
+            db.prepare(`
+                INSERT INTO stock_movements (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)
+                VALUES (?, ?, 'sale', ?, 'quick_transaction', ?, ?)
+            `).run(productId, showroom.id, -item.quantity, transactionId, `بيع سريع ${number}`);
+            insertItem.run(transactionId, productId, item.quantity, Number(item.product.sale_price || 0), Number(item.product.purchase_price || 0), item.lineTotal);
+-------------------------
+
+===== main.js | pattern=SELECT quantity FROM stock|SELECT COALESCE\(SUM\(quantity\), 0\) =====
+--- line 837 ---
+        if (total <= 0) throw new Error("إجمالي البيع يجب أن يكون أكبر من صفر");
+        for (const [productId, quantity] of requested) {
+            const product = prepared.find((item) => item.product.id === productId).product;
+            const stock = db.prepare("SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?").get(productId, showroom.id);
+            if (quantity > Number(stock?.quantity || 0) + 0.000001) {
+                throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في المعرض`);
+            }
+        }
+        const nextId = Number(db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM quick_transactions").get().id);
+        const number = `QS-${String(nextId).padStart(6, "0")}`;
+        const result = db.prepare(`
+            INSERT INTO quick_transactions (transaction_number, transaction_type, total_amount, notes)
+            VALUES (?, 'sale', ?, ?)
+        `).run(number, total, String(payload.notes || "").trim() || null);
+        const transactionId = Number(result.lastInsertRowid);
+        const insertItem = db.prepare(`
+            INSERT INTO quick_transaction_items
+                (transaction_id, product_id, quantity, unit_price, purchase_price, total_amount)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        for (const item of prepared) {
+            const productId = Number(item.product.id);
+            db.prepare(`UPDATE stock SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND location_id = ?`)
+                .run(item.quantity, productId, showroom.id);
+            db.prepare(`
+                INSERT INTO stock_movements (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)
+                VALUES (?, ?, 'sale', ?, 'quick_transaction', ?, ?)
+            `).run(productId, showroom.id, -item.quantity, transactionId, `بيع سريع ${number}`);
+            insertItem.run(transactionId, productId, item.quantity, Number(item.product.sale_price || 0), Number(item.product.purchase_price || 0), item.lineTotal);
+        }
+        const account = db.prepare("SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' AND is_active = 1").get();
+        if (!account) throw new Error("الخزنة الرئيسية غير موجودة أو غير نشطة");
+-------------------------
+--- line 1445 ---
+
+            for (const item of returnedItems) {
+                const stock = db.prepare(`
+                    SELECT quantity FROM stock
+                    WHERE product_id = ? AND location_id = ?
+                `).get(item.product_id, item.location_id);
+
+                if (!stock || Number(stock.quantity || 0) + 0.000001 < Number(item.quantity || 0)) {
+                    throw new Error(
+                        "تعذر الحذف النهائي: كمية مرتجع أحد الأصناف غير متوفرة في مكان إرجاعها."
+                    );
+                }
+            }
+
+            for (const item of returnedItems) {
+                db.prepare(`
+                    UPDATE stock
+                    SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE product_id = ? AND location_id = ?
+                `).run(item.quantity, item.product_id, item.location_id);
+
+                db.prepare(`
+                    INSERT INTO stock_movements
+                        (product_id, location_id, movement_type, quantity,
+                         reference_type, reference_id, notes)
+                    VALUES (?, ?, 'adjustment', ?, 'sale_delete', ?, ?)
+                `).run(
+                    item.product_id,
+                    item.location_id,
+                    -Number(item.quantity),
+                    id,
+                    `عكس مرتجع عند الحذف النهائي للفاتورة ${sale.invoice_number}`
+-------------------------
+--- line 2440 ---
+                }
+
+                const stockRow = db.prepare(`
+                SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?
+            `).get(productId, locationRow.id);
+
+                const available = Number(stockRow?.quantity || 0);
+                if (quantity > available) {
+                    throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);
+                }
+
+                const total = quantity * unitPrice;
+                subtotal += total;
+
+                preparedItems.push({
+                    productId,
+                    quantity,
+                    unitPrice,
+                    total,
+                    purchasePrice: Number(product.purchase_price || 0)
+                });
+            }
+
+            // خصم التاجر (كلي)
+            const traderDiscountAmount = subtotal * traderDiscountPercent / 100;
+            const grandTotal = subtotal - traderDiscountAmount;
+
+            const paid = Math.max(0, Number(order.paid || 0));
+            if (paid > grandTotal) throw new Error("المبلغ المدفوع أكبر من إجمالي طلبيه السباكه");
+            const remaining = grandTotal - paid;
+            const saleType = remaining > 0 ? "credit" : "cash";
+
+-------------------------
+--- line 2674 ---
+                }
+
+                const stockRow = db.prepare(`
+                SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?
+            `).get(productId, locationRow.id);
+
+                const available = Number(stockRow?.quantity || 0);
+                if (quantity > available) {
+                    throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);
+                }
+
+                const total = quantity * unitPrice;
+                subtotal += total;
+
+                if (product.category_name === "سباكة") {
+                    plumbingSubtotal += total;
+                }
+
+                const displayQuantity = Number(
+    item.display_quantity ?? item.displayQuantity ?? quantity
+);
+const displayUnit =
+    String(item.display_unit ?? item.displayUnit ?? "").trim() || null;
+const displayUnitPrice = Number(
+    item.display_unit_price ?? item.displayUnitPrice ?? unitPrice
+);
+
+preparedItems.push({
+    productId,
+    quantity,
+    unitPrice,
+    total,
+-------------------------
+
+===== src\renderer\app.js | pattern=const payload = \{|createSale\(payload\)|id="sale|saleForm|saveSale|renderSaleItems|function resetSaleForm|const items = \[\] =====
+--- line 419 ---
+        <section class="sales-analytics-panel" aria-labelledby="salesAnalyticsTitle">
+            <div class="sales-analytics-heading">
+                <div>
+                    <span class="analytics-eyebrow">تحليل المبيعات</span>
+                    <h3 id="salesAnalyticsTitle">حركة آخر 7 أيام</h3>
+                    <p>الإجمالي اليومي للمبيعات المسجلة من قاعدة بيانات الشرق</p>
+                </div>
+                <div class="sales-trend" id="salesTrend" aria-live="polite">
+                    <span class="trend-label">مقارنة بأمس</span>
+                    <strong id="salesTrendValue">جارٍ التحميل...</strong>
+                </div>
+            </div>
+            <div class="sales-chart-summary">
+                <span>إجمالي مبيعات الأسبوع</span>
+                <strong id="salesChartWeek">جارٍ التحميل...</strong>
+            </div>
+            <div class="sales-chart" id="salesTrendChart" role="img" aria-label="رسم المبيعات لآخر سبعة أيام">
+                <div class="chart-loading" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="sales-chart-days" id="salesChartDays"></div>
+        </section>
+
+        <div class="section-header">
+            <div>
+                <h3>العمليات السريعة</h3>
+                <span>اختصارات للعمليات اليومية</span>
+            </div>
+        </div>
+
+        <div class="quick-grid">
+            <button class="quick-card" id="quickNewSale">
+                <div>＋</div>
+                <strong>فاتورة بيع</strong>
+                <span>إنشاء فاتورة جديدة</span>
+            </button>
+            <button class="quick-card" id="quickNewPlumbing">
+                <div>🔧</div>
+                <strong>طلبية سباكة</strong>
+                <span>طلبية تاجر جديدة</span>
+            </button>
+            <button class="quick-card" id="quickAddProduct">
+                <div>▣</div>
+                <strong>إضافة منتج</strong>
+-------------------------
+--- line 422 ---
+                    <span class="analytics-eyebrow">تحليل المبيعات</span>
+                    <h3 id="salesAnalyticsTitle">حركة آخر 7 أيام</h3>
+                    <p>الإجمالي اليومي للمبيعات المسجلة من قاعدة بيانات الشرق</p>
+                </div>
+                <div class="sales-trend" id="salesTrend" aria-live="polite">
+                    <span class="trend-label">مقارنة بأمس</span>
+                    <strong id="salesTrendValue">جارٍ التحميل...</strong>
+                </div>
+            </div>
+            <div class="sales-chart-summary">
+                <span>إجمالي مبيعات الأسبوع</span>
+                <strong id="salesChartWeek">جارٍ التحميل...</strong>
+            </div>
+            <div class="sales-chart" id="salesTrendChart" role="img" aria-label="رسم المبيعات لآخر سبعة أيام">
+                <div class="chart-loading" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="sales-chart-days" id="salesChartDays"></div>
+        </section>
+
+        <div class="section-header">
+            <div>
+                <h3>العمليات السريعة</h3>
+                <span>اختصارات للعمليات اليومية</span>
+            </div>
+        </div>
+
+        <div class="quick-grid">
+            <button class="quick-card" id="quickNewSale">
+                <div>＋</div>
+                <strong>فاتورة بيع</strong>
+                <span>إنشاء فاتورة جديدة</span>
+            </button>
+            <button class="quick-card" id="quickNewPlumbing">
+                <div>🔧</div>
+                <strong>طلبية سباكة</strong>
+                <span>طلبية تاجر جديدة</span>
+            </button>
+            <button class="quick-card" id="quickAddProduct">
+                <div>▣</div>
+                <strong>إضافة منتج</strong>
+                <span>إضافة صنف للمخزون</span>
+            </button>
+            <button class="quick-card" id="quickStockTransfer">
+-------------------------
+--- line 424 ---
+                    <p>الإجمالي اليومي للمبيعات المسجلة من قاعدة بيانات الشرق</p>
+                </div>
+                <div class="sales-trend" id="salesTrend" aria-live="polite">
+                    <span class="trend-label">مقارنة بأمس</span>
+                    <strong id="salesTrendValue">جارٍ التحميل...</strong>
+                </div>
+            </div>
+            <div class="sales-chart-summary">
+                <span>إجمالي مبيعات الأسبوع</span>
+                <strong id="salesChartWeek">جارٍ التحميل...</strong>
+            </div>
+            <div class="sales-chart" id="salesTrendChart" role="img" aria-label="رسم المبيعات لآخر سبعة أيام">
+                <div class="chart-loading" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="sales-chart-days" id="salesChartDays"></div>
+        </section>
+
+        <div class="section-header">
+            <div>
+                <h3>العمليات السريعة</h3>
+                <span>اختصارات للعمليات اليومية</span>
+            </div>
+        </div>
+
+        <div class="quick-grid">
+            <button class="quick-card" id="quickNewSale">
+                <div>＋</div>
+                <strong>فاتورة بيع</strong>
+                <span>إنشاء فاتورة جديدة</span>
+            </button>
+            <button class="quick-card" id="quickNewPlumbing">
+                <div>🔧</div>
+                <strong>طلبية سباكة</strong>
+                <span>طلبية تاجر جديدة</span>
+            </button>
+            <button class="quick-card" id="quickAddProduct">
+                <div>▣</div>
+                <strong>إضافة منتج</strong>
+                <span>إضافة صنف للمخزون</span>
+            </button>
+            <button class="quick-card" id="quickStockTransfer">
+                <div>↔</div>
+                <strong>تحويل مخزون</strong>
+-------------------------
+--- line 429 ---
+                </div>
+            </div>
+            <div class="sales-chart-summary">
+                <span>إجمالي مبيعات الأسبوع</span>
+                <strong id="salesChartWeek">جارٍ التحميل...</strong>
+            </div>
+            <div class="sales-chart" id="salesTrendChart" role="img" aria-label="رسم المبيعات لآخر سبعة أيام">
+                <div class="chart-loading" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="sales-chart-days" id="salesChartDays"></div>
+        </section>
+
+        <div class="section-header">
+            <div>
+                <h3>العمليات السريعة</h3>
+                <span>اختصارات للعمليات اليومية</span>
+            </div>
+        </div>
+
+        <div class="quick-grid">
+            <button class="quick-card" id="quickNewSale">
+                <div>＋</div>
+                <strong>فاتورة بيع</strong>
+                <span>إنشاء فاتورة جديدة</span>
+            </button>
+            <button class="quick-card" id="quickNewPlumbing">
+                <div>🔧</div>
+                <strong>طلبية سباكة</strong>
+                <span>طلبية تاجر جديدة</span>
+            </button>
+            <button class="quick-card" id="quickAddProduct">
+                <div>▣</div>
+                <strong>إضافة منتج</strong>
+                <span>إضافة صنف للمخزون</span>
+            </button>
+            <button class="quick-card" id="quickStockTransfer">
+                <div>↔</div>
+                <strong>تحويل مخزون</strong>
+                <span>المعرض ↔ المخزن</span>
+            </button>
+        </div>
+
+        <div class="bottom-grid">
+-------------------------
+--- line 431 ---
+            <div class="sales-chart-summary">
+                <span>إجمالي مبيعات الأسبوع</span>
+                <strong id="salesChartWeek">جارٍ التحميل...</strong>
+            </div>
+            <div class="sales-chart" id="salesTrendChart" role="img" aria-label="رسم المبيعات لآخر سبعة أيام">
+                <div class="chart-loading" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="sales-chart-days" id="salesChartDays"></div>
+        </section>
+
+        <div class="section-header">
+            <div>
+                <h3>العمليات السريعة</h3>
+                <span>اختصارات للعمليات اليومية</span>
+            </div>
+        </div>
+
+        <div class="quick-grid">
+            <button class="quick-card" id="quickNewSale">
+                <div>＋</div>
+                <strong>فاتورة بيع</strong>
+                <span>إنشاء فاتورة جديدة</span>
+            </button>
+            <button class="quick-card" id="quickNewPlumbing">
+                <div>🔧</div>
+                <strong>طلبية سباكة</strong>
+                <span>طلبية تاجر جديدة</span>
+            </button>
+            <button class="quick-card" id="quickAddProduct">
+                <div>▣</div>
+                <strong>إضافة منتج</strong>
+                <span>إضافة صنف للمخزون</span>
+            </button>
+            <button class="quick-card" id="quickStockTransfer">
+                <div>↔</div>
+                <strong>تحويل مخزون</strong>
+                <span>المعرض ↔ المخزن</span>
+            </button>
+        </div>
+
+        <div class="bottom-grid">
+            <div class="panel">
+                <div class="panel-header">
+-------------------------
+--- line 434 ---
+            </div>
+            <div class="sales-chart" id="salesTrendChart" role="img" aria-label="رسم المبيعات لآخر سبعة أيام">
+                <div class="chart-loading" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="sales-chart-days" id="salesChartDays"></div>
+        </section>
+
+        <div class="section-header">
+            <div>
+                <h3>العمليات السريعة</h3>
+                <span>اختصارات للعمليات اليومية</span>
+            </div>
+        </div>
+
+        <div class="quick-grid">
+            <button class="quick-card" id="quickNewSale">
+                <div>＋</div>
+                <strong>فاتورة بيع</strong>
+                <span>إنشاء فاتورة جديدة</span>
+            </button>
+            <button class="quick-card" id="quickNewPlumbing">
+                <div>🔧</div>
+                <strong>طلبية سباكة</strong>
+                <span>طلبية تاجر جديدة</span>
+            </button>
+            <button class="quick-card" id="quickAddProduct">
+                <div>▣</div>
+                <strong>إضافة منتج</strong>
+                <span>إضافة صنف للمخزون</span>
+            </button>
+            <button class="quick-card" id="quickStockTransfer">
+                <div>↔</div>
+                <strong>تحويل مخزون</strong>
+                <span>المعرض ↔ المخزن</span>
+            </button>
+        </div>
+
+        <div class="bottom-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h3>أحدث فواتير البيع</h3>
+                        <span>آخر الفواتير المسجلة في النظام</span>
+-------------------------
+--- line 589 ---
+        const areaPath = `${linePath} L ${chartRight} ${chartBottom} L ${chartLeft} ${chartBottom} Z`;
+        document.getElementById("salesTrendChart").innerHTML = `
+            <svg viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                    <linearGradient id="salesAreaGradient" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0" stop-color="#54e3bd" stop-opacity=".3"/>
+                        <stop offset="1" stop-color="#54e3bd" stop-opacity=".015"/>
+                    </linearGradient>
+                </defs>
+                <path class="chart-gridline" d="M ${chartLeft} ${chartTop} H ${chartRight} M ${chartLeft} ${(chartTop + chartBottom) / 2} H ${chartRight} M ${chartLeft} ${chartBottom} H ${chartRight}"/>
+                <path class="chart-area" d="${areaPath}"/>
+                <path class="chart-line" d="${linePath}"/>
+                ${points.map((point) => `
+                    <circle class="chart-point" cx="${point.x}" cy="${point.y}" r="4">
+                        <title>${point.date.toLocaleDateString("ar-EG", { weekday: "long" })}: ${formatMoney(point.total)} ج.م، ${point.count} فاتورة</title>
+                    </circle>
+                `).join("")}
+            </svg>
+        `;
+        document.getElementById("salesChartDays").innerHTML = dailySales.map((day) => `
+            <div class="sales-chart-day" title="${formatMoney(day.total)} ج.م - ${day.count} فاتورة">
+                <span>${day.date.toLocaleDateString("ar-EG", { weekday: "short" })}</span>
+                <strong>${formatMoney(day.total)}</strong>
+            </div>
+        `).join("");
+
+        const latest = sales.slice(0, 5);
+        const salesPanel = document.querySelector(".bottom-grid .panel:first-child .empty-state");
+        if (salesPanel) {
+            salesPanel.outerHTML = latest.length
+                ? `<div class="last-invoices-table-wrapper"><table class="last-invoices-table"><thead><tr><th>الفاتورة</th><th>العميل</th><th>الإجمالي</th><th>التاريخ</th></tr></thead><tbody>${latest.map((sale) => `<tr><td>${escapeHtml(sale.invoice_number || sale.id)}</td><td>${escapeHtml(sale.customer_name || "عميل نقدي")}</td><td>${formatMoney(sale.total)} ج.م</td><td>${sale.created_at ? new Date(sale.created_at).toLocaleDateString("ar-EG") : "-"}</td></tr>`).join("")}</tbody></table></div>`
+                : `<div class="empty-state"><div>▤</div><strong>لا توجد مبيعات حتى الآن</strong><span>ستظهر آخر الفواتير هنا</span></div>`;
+        }
+
+        const totalStockValue = Number(dailyReports[dailyReports.length - 1].stockValue || 0);
+        const stockHeader = document.querySelector(".bottom-grid .panel:last-child .panel-header span");
+        if (stockHeader) stockHeader.textContent = `قيمة المخزون: ${formatMoney(totalStockValue)} ج.م`;
+        const lowStock = stock.filter((product) => Number(product.total_quantity) <= Number(product.min_stock));
+        const stockPanel = document.querySelector(".bottom-grid .panel:last-child .empty-state");
+        if (stockPanel) {
+            stockPanel.outerHTML = lowStock.length
+                ? `<div class="last-invoices-table-wrapper"><table class="last-invoices-table"><thead><tr><th>المنتج</th><th>المتاح</th><th>الحد الأدنى</th></tr></thead><tbody>${lowStock.slice(0, 8).map((product) => `<tr><td>${escapeHtml(product.name)}</td><td>${formatMoney(product.total_quantity)} ${escapeHtml(product.unit || "قطعة")}</td><td>${formatMoney(product.min_stock)} ${escapeHtml(product.unit || "قطعة")}</td></tr>`).join("")}</tbody></table></div>`
+                : `<div class="empty-state"><div>✓</div><strong>لا توجد تنبيهات</strong><span>المخزون يعمل بشكل طبيعي</span></div>`;
+-------------------------
+--- line 981 ---
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>سعر البيع</label>
+                        <input type="number" id="salePrice" min="0" step="0.01" placeholder="0.00" required
+                            value="${editProduct ? formatMoney(Number(editProduct.sale_price ?? 0)) : ""}">
+                    </div>
+                    <div class="form-field">
+                        <label>الحد الأدنى للمخزون</label>
+                        <input type="number" id="minStock" min="0" step="0.01"
+                            value="${editProduct ? (editProduct.min_stock ?? "") : ""}">
+                    </div>
+                </div>
+
+                <div id="specialtyArea"></div>
+                <div id="plumbingPipeUnitNotice" class="product-form-message" hidden>
+                    تُباع المواسير بالمتر فقط؛ السعر والرصيد الافتتاحي والحد الأدنى محسوبة بالمتر.
+                </div>
+
+                ${isEditMode && !isSetEditMode ? `
+                    <label class="product-active-toggle">
+                        <input type="checkbox" id="productActive" ${Number(editProduct?.active) === 1 ? "checked" : ""}>
+                        <span>الصنف نشط ومتاح للبيع</span>
+                    </label>
+                ` : ""}
+
+                <div class="stock-section">
+                    <div class="stock-section-title">
+                        <strong>${isEditMode ? "أرصدة المعرض والمخزن" : "الرصيد الافتتاحي"}</strong>
+                        <span>${isEditMode ? "أدخل الرصيد الفعلي؛ سيُسجل أي فرق كتسوية مخزون" : "أدخل الكمية الموجودة حاليًا في كل موقع"}</span>
+                    </div>
+                    <div class="stock-grid">
+                        <div class="stock-box">
+                            <label>🏪 المعرض</label>
+                            <input type="number" id="showroomQuantity" min="0" step="0.01"
+                                value="${editProduct ? (editProduct.showroom_quantity ?? "") : ""}">
+                            <span id="stockUnitShowroom">${editProduct?.unit || "قطعة"}</span>
+                        </div>
+                        <div class="stock-box">
+                            <label>📦 المخزن</label>
+                            <input type="number" id="warehouseQuantity" min="0" step="0.01"
+                                value="${editProduct ? (editProduct.warehouse_quantity ?? "") : ""}">
+                            <span id="stockUnitWarehouse">${editProduct?.unit || "قطعة"}</span>
+-------------------------
+
+===== src\renderer\app.js | pattern=data-nav="sales"|show\("reservations"\)|async function showSalesPage =====
+--- line 500 ---
+    `;
+
+    document.getElementById("quickNewSale")?.addEventListener("click", () => {
+        const sales = document.querySelector('[data-nav="sales"]');
+        sales?.click();
+    });
+    document.getElementById("quickNewPlumbing")?.addEventListener("click", () => {
+        const po = document.querySelector('[data-nav="plumbing-orders"]');
+        po?.click();
+    });
+    document.getElementById("quickAddProduct")?.addEventListener("click", async () => {
+        await showAddProductModal();
+    });
+    document.getElementById("quickStockTransfer")?.addEventListener("click", () => {
+        document.querySelector('[data-nav="stock"]')?.click();
+    });
+    document.getElementById("dashboardAllSales")?.addEventListener("click", () => {
+        document.querySelector('[data-nav="sales"]')?.click();
+    });
+
+    try {
+        const dates = Array.from({ length: 7 }, (_, index) => {
+            const date = new Date();
+            date.setHours(12, 0, 0, 0);
+            date.setDate(date.getDate() - (6 - index));
+            return date;
+-------------------------
+--- line 514 ---
+        document.querySelector('[data-nav="stock"]')?.click();
+    });
+    document.getElementById("dashboardAllSales")?.addEventListener("click", () => {
+        document.querySelector('[data-nav="sales"]')?.click();
+    });
+
+    try {
+        const dates = Array.from({ length: 7 }, (_, index) => {
+            const date = new Date();
+            date.setHours(12, 0, 0, 0);
+            date.setDate(date.getDate() - (6 - index));
+            return date;
+        });
+        const dailyReportsPromise = Promise.all(
+            dates.map((date) => {
+                const day = getLocalDateString(date);
+                return window.elSharq.getReportSummary({ from: day, to: day });
+            })
+        );
+        const [dailyReports, cashAccounts, sales, stock] = await Promise.all([
+            dailyReportsPromise,
+            window.elSharq.getCashSummary(),
+            window.elSharq.getSales("all"),
+            window.elSharq.getStockOverview()
+        ]);
+        const todaySummary = dailyReports[dailyReports.length - 1].sales;
+-------------------------
+--- line 1896 ---
+    });
+}
+
+async function showSalesPage() {
+    const dashboard = getDashboard();
+    if (!dashboard) return;
+
+    let products = [];
+    let productSets = [];
+    try {
+        products = await window.elSharq.getProducts();
+        productSets = ((await window.elSharq.getProductSets?.()) || []).filter((set) =>
+            Number(set.is_active) === 1 &&
+            Array.isArray(set.items) &&
+            set.items.length > 0 &&
+            set.items.every((piece) =>
+                products.some((product) =>
+                    Number(product.id) === Number(piece.product_id) &&
+                    Number(product.active) === 1
+                )
+            )
+        );
+    } catch (error) {
+        console.error("Sales products loading error:", error);
+        dashboard.innerHTML = `<div class="page-header"><h2>المبيعات</h2></div><div class="product-form-message error">تعذر تحميل بيانات البيع: ${escapeHtml(error?.message || "خطأ غير معروف")}</div>`;
+        return;
+-------------------------
+
+===== src\preload.js | pattern=createSale:|getSaleById:|getSales:|reserv|createQuickSale: =====
+--- line 51 ---
+
+    // ====== المبيعات (الفواتير) ======
+    getSales: (filter, searchTerm = "") =>
+        ipcRenderer.invoke("sales:getAll", filter, searchTerm),
+
+    getSaleById: (id) =>
+        ipcRenderer.invoke("sales:getById", id),
+
+    createSale: (sale) =>
+        ipcRenderer.invoke("sales:create", sale),
+
+-------------------------
+--- line 54 ---
+        ipcRenderer.invoke("sales:getAll", filter, searchTerm),
+
+    getSaleById: (id) =>
+        ipcRenderer.invoke("sales:getById", id),
+
+    createSale: (sale) =>
+        ipcRenderer.invoke("sales:create", sale),
+
+    updateSale: (id, sale) =>
+        ipcRenderer.invoke("sales:update", id, sale),
+
+-------------------------
+--- line 57 ---
+        ipcRenderer.invoke("sales:getById", id),
+
+    createSale: (sale) =>
+        ipcRenderer.invoke("sales:create", sale),
+
+    updateSale: (id, sale) =>
+        ipcRenderer.invoke("sales:update", id, sale),
+
+    deleteSale: (id, password, mode) =>
+        ipcRenderer.invoke("sales:delete", id, password, mode),
+
+-------------------------
+--- line 73 ---
+    getQuickTransactions: () => ipcRenderer.invoke("quickTransactions:getHistory"),
+    deleteQuickTransaction: (id) => ipcRenderer.invoke("quickTransactions:delete", id),
+    createQuickSale: (sale) => ipcRenderer.invoke("quickTransactions:createSale", sale),
+    createQuickStandaloneReturn: (payload) =>
+        ipcRenderer.invoke("quickTransactions:createStandaloneReturn", payload),
+
+    createQuickReturn: (saleId, payload) => ipcRenderer.invoke("quickTransactions:createReturn", saleId, payload),
+
+    // ====== طلبيه سباكه للتجار ======
+    createPlumbingOrder: (order) =>
+        ipcRenderer.invoke("plumbingOrders:create", order),
+-------------------------
+
+===== src\database\database.js | pattern=function columnExists|Safe Migrations|CREATE TABLE IF NOT EXISTS customer_transactions|CREATE TABLE IF NOT EXISTS sale_payments =====
+--- line 235 ---
+    -- حركة حسابات العملاء
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS customer_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        customer_id INTEGER NOT NULL,
+
+        transaction_type TEXT NOT NULL,
+
+        reference_type TEXT,
+
+        reference_id INTEGER,
+
+        debit REAL NOT NULL DEFAULT 0,
+
+        credit REAL NOT NULL DEFAULT 0,
+
+        notes TEXT,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (customer_id)
+            REFERENCES customers(id)
+-------------------------
+--- line 399 ---
+    -- مدفوعات المبيعات
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS sale_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        sale_id INTEGER NOT NULL,
+
+        amount REAL NOT NULL,
+
+        payment_method TEXT NOT NULL DEFAULT 'cash',
+
+        notes TEXT,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (sale_id)
+            REFERENCES sales(id)
+            ON DELETE CASCADE
+    );
+
+
+    -- ======================================
+    -- مرتجعات المبيعات
+-------------------------
+--- line 943 ---
+
+
+// ==========================================
+// هجرات غير مدمرة (Safe Migrations)
+// ==========================================
+// فكرة الدالة المساعدة: بنشوف العمود موجود ولا لأ
+function columnExists(tableName, columnName) {
+    const row = db.prepare(`
+        SELECT COUNT(*) AS cnt FROM pragma_table_info(?)
+        WHERE name = ?
+    `).get(tableName, columnName);
+    return row.cnt > 0;
+}
+
+// ---------- جدول products: إضافة أعمدة السيراميك والسباكه ----------
+if (!columnExists("products", "tile_length_cm")) {
+    db.exec(`ALTER TABLE products ADD COLUMN tile_length_cm REAL DEFAULT NULL`);
+    console.log("Migration: Added column tile_length_cm to products");
+}
+if (!columnExists("products", "tile_width_cm")) {
+    db.exec(`ALTER TABLE products ADD COLUMN tile_width_cm REAL DEFAULT NULL`);
+    console.log("Migration: Added column tile_width_cm to products");
+}
+if (!columnExists("products", "tiles_per_carton")) {
+-------------------------
+--- line 946 ---
+// هجرات غير مدمرة (Safe Migrations)
+// ==========================================
+// فكرة الدالة المساعدة: بنشوف العمود موجود ولا لأ
+function columnExists(tableName, columnName) {
+    const row = db.prepare(`
+        SELECT COUNT(*) AS cnt FROM pragma_table_info(?)
+        WHERE name = ?
+    `).get(tableName, columnName);
+    return row.cnt > 0;
+}
+
+// ---------- جدول products: إضافة أعمدة السيراميك والسباكه ----------
+if (!columnExists("products", "tile_length_cm")) {
+    db.exec(`ALTER TABLE products ADD COLUMN tile_length_cm REAL DEFAULT NULL`);
+    console.log("Migration: Added column tile_length_cm to products");
+}
+if (!columnExists("products", "tile_width_cm")) {
+    db.exec(`ALTER TABLE products ADD COLUMN tile_width_cm REAL DEFAULT NULL`);
+    console.log("Migration: Added column tile_width_cm to products");
+}
+if (!columnExists("products", "tiles_per_carton")) {
+    db.exec(`ALTER TABLE products ADD COLUMN tiles_per_carton INTEGER DEFAULT NULL`);
+    console.log("Migration: Added column tiles_per_carton to products");
+}
+-------------------------
+
+READ ONLY: This inspection script does not edit code or database files.

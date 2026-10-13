@@ -83,7 +83,8 @@ function registerOperations(ipcMain, db) {
         `).get(id);
         if (!purchase) throw new Error("فاتورة الشراء غير موجودة");
         purchase.items = db.prepare(`
-            SELECT pi.product_id, pi.quantity, pi.unit_cost, pi.total_amount AS total,
+            SELECT pi.product_id, pi.quantity, pi.unit_cost, pi.list_price,
+                pi.plumbing_discount_percent, pi.total_amount AS total,
                 p.name, p.unit, l.name AS location_name
             FROM purchase_items pi
             JOIN products p ON p.id = pi.product_id
@@ -126,6 +127,8 @@ function registerOperations(ipcMain, db) {
                     COUNT(previous_purchase_price) AS previous_cost_count,
                     MIN(previous_purchase_price_manual) AS previous_purchase_price_manual,
                     COUNT(previous_purchase_price_manual) AS previous_manual_count,
+                    MIN(previous_sale_price) AS previous_sale_price,
+                    COUNT(previous_sale_price) AS previous_sale_price_count,
                     COUNT(*) AS item_count
                 FROM purchase_items WHERE purchase_id = ?
                 GROUP BY product_id
@@ -146,7 +149,7 @@ function registerOperations(ipcMain, db) {
                     throw new Error("لا يمكن حذف الفاتورة بأمان بعد وجود حركة لاحقة لأحد أصنافها");
                 }
                 const product = db.prepare(`
-                    SELECT purchase_price, updated_at FROM products WHERE id = ?
+                    SELECT purchase_price, sale_price, updated_at FROM products WHERE id = ?
                 `).get(item.product_id);
                 if (product.updated_at > purchase.created_at) {
                     throw new Error("تم تعديل بيانات تكلفة أحد الأصناف بعد الفاتورة؛ لا يمكن عكس التكلفة بأمان");
@@ -188,12 +191,16 @@ function registerOperations(ipcMain, db) {
                 if (Number(item.previous_manual_count) !== Number(item.item_count)) {
                     previousManual = null;
                 }
+                const previousSalePrice = Number(item.previous_sale_price_count) === Number(item.item_count)
+                    ? Number(item.previous_sale_price)
+                    : null;
                 db.prepare(`
                     UPDATE products SET purchase_price = ?,
                         purchase_price_manual = COALESCE(?, purchase_price_manual),
+                        sale_price = COALESCE(?, sale_price),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                `).run(previousCost, previousManual, item.product_id);
+                `).run(previousCost, previousManual, previousSalePrice, item.product_id);
             }
 
             db.prepare(`
@@ -252,13 +259,68 @@ function registerOperations(ipcMain, db) {
             const items = purchase.items.map((item) => {
                 const productId = Number(item.product_id);
                 const product = db.prepare(`
-                    SELECT id, name, purchase_price, purchase_price_manual FROM products
-                    WHERE id = ? AND is_active = 1
+                    SELECT p.id, p.name, p.purchase_price, p.purchase_price_manual,
+                        p.sale_price, p.company_discount_percent, c.name AS category_name
+                    FROM products p
+                    LEFT JOIN categories c ON c.id = p.category_id
+                    WHERE p.id = ? AND p.is_active = 1
                 `).get(productId);
                 if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+
                 const quantity = finiteNumber(item.quantity, `كمية ${product.name}`, { min: Number.MIN_VALUE });
-                const unitCost = finiteNumber(item.unit_cost, `سعر شراء ${product.name}`);
-                return { product, productId, quantity, unitCost, total: quantity * unitCost };
+                const isPlumbing = String(product.category_name || "").trim() === "سباكة";
+                let listPrice = null;
+                let plumbingDiscountPercent = null;
+                let unitCost;
+                let salePrice = null;
+
+                if (item.pricing_mode === "discount") {
+                    listPrice = finiteNumber(item.list_price, `سعر الليستة للصنف ${product.name}`);
+                    if (listPrice <= 0) throw new Error(`سعر الليستة للصنف ${product.name} يجب أن يكون أكبر من صفر`);
+                    plumbingDiscountPercent = finiteNumber(item.discount_percent, `نسبة الخصم للصنف ${product.name}`);
+                    if (plumbingDiscountPercent < 0 || plumbingDiscountPercent > 100) {
+                        throw new Error(`نسبة الخصم للصنف ${product.name} يجب أن تكون بين 0 و100`);
+                    }
+                    unitCost = Math.round(listPrice * (1 - plumbingDiscountPercent / 100) * 100) / 100;
+                    salePrice = finiteNumber(item.sale_price ?? listPrice, `سعر البيع ${product.name}`);
+                    if (salePrice <= 0) throw new Error(`سعر البيع للصنف ${product.name} يجب أن يكون أكبر من صفر`);
+                } else if (item.pricing_mode === "manual") {
+                    unitCost = finiteNumber(item.unit_cost, `سعر شراء ${product.name}`);
+                    if (unitCost <= 0) throw new Error(`سعر الشراء للصنف ${product.name} يجب أن يكون أكبر من صفر`);
+                    salePrice = finiteNumber(item.sale_price, `سعر البيع ${product.name}`);
+                    if (salePrice <= 0) throw new Error(`سعر البيع للصنف ${product.name} يجب أن يكون أكبر من صفر`);
+                    listPrice = salePrice;
+                } else if (isPlumbing) {
+                    // Keep compatibility with invoices created by the previous plumbing-only form.
+                    listPrice = finiteNumber(item.list_price ?? item.unit_cost, `سعر اللستة للصنف ${product.name}`);
+                    if (listPrice <= 0) throw new Error(`سعر اللستة للصنف ${product.name} يجب أن يكون أكبر من صفر`);
+                    plumbingDiscountPercent = finiteNumber(
+                        item.plumbing_discount_percent ?? product.company_discount_percent ?? 0,
+                        `نسبة خصم السباكة للصنف ${product.name}`
+                    );
+                    if (plumbingDiscountPercent < 0 || plumbingDiscountPercent > 100) {
+                        throw new Error(`نسبة الخصم للصنف ${product.name} يجب أن تكون بين 0 و100`);
+                    }
+                    unitCost = Math.round(listPrice * (1 - plumbingDiscountPercent / 100) * 100) / 100;
+                } else {
+                    unitCost = finiteNumber(item.unit_cost, `سعر شراء ${product.name}`);
+                    if (item.sale_price !== undefined && item.sale_price !== null && String(item.sale_price).trim() !== "") {
+                        salePrice = finiteNumber(item.sale_price, `سعر بيع ${product.name}`);
+                        if (salePrice <= 0) throw new Error(`سعر البيع للصنف ${product.name} يجب أن يكون أكبر من صفر`);
+                    }
+                }
+
+                return {
+                    product,
+                    productId,
+                    quantity,
+                    unitCost,
+                    isPlumbing,
+                    listPrice,
+                    plumbingDiscountPercent,
+                    salePrice,
+                    total: quantity * unitCost
+                };
             });
 
             const subtotal = items.reduce((sum, item) => sum + item.total, 0);
@@ -280,7 +342,7 @@ function registerOperations(ipcMain, db) {
             `).run(
                 invoiceNumber,
                 supplierId,
-                remaining > 0 ? "credit" : "cash",
+                remaining > 0 ? (paid > 0 ? "mixed" : "credit") : "cash",
                 subtotal,
                 discount,
                 total,
@@ -293,8 +355,9 @@ function registerOperations(ipcMain, db) {
             const insertItem = db.prepare(`
                 INSERT INTO purchase_items
                     (purchase_id, product_id, location_id, quantity, unit_cost, total_amount,
-                     previous_purchase_price, previous_purchase_price_manual)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     previous_purchase_price, previous_purchase_price_manual, list_price,
+                     plumbing_discount_percent, previous_sale_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
             const productTotals = new Map();
             for (const item of items) {
@@ -315,7 +378,10 @@ function registerOperations(ipcMain, db) {
                     item.unitCost,
                     item.total,
                     Number(item.product.purchase_price),
-                    Number(item.product.purchase_price_manual || 0)
+                    Number(item.product.purchase_price_manual || 0),
+                    item.listPrice,
+                    item.plumbingDiscountPercent,
+                    item.salePrice === null ? null : Number(item.product.sale_price)
                 );
                 db.prepare(`
                     UPDATE stock SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
@@ -331,6 +397,11 @@ function registerOperations(ipcMain, db) {
                     `فاتورة شراء ${invoiceNumber}`
                 );
             }
+            const salePrices = new Map();
+            for (const item of items) {
+                if (item.salePrice !== null) salePrices.set(item.productId, item.salePrice);
+            }
+
             const costFactor = subtotal > 0 ? total / subtotal : 1;
             for (const [productId, productTotal] of productTotals) {
                 const latestNetCost = productTotal.quantity > 0
@@ -338,9 +409,10 @@ function registerOperations(ipcMain, db) {
                     : productTotal.previousCost;
                 db.prepare(`
                     UPDATE products SET purchase_price = ?, purchase_price_manual = 1,
+                        sale_price = COALESCE(?, sale_price),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                `).run(latestNetCost, productId);
+                `).run(latestNetCost, salePrices.has(productId) ? salePrices.get(productId) : null, productId);
             }
 
             if (supplierId) {
@@ -359,9 +431,10 @@ function registerOperations(ipcMain, db) {
             }
 
             if (paid > 0) {
-                const account = db.prepare(`
-                    SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' AND is_active = 1
-                `).get();
+                const requestedCashAccountId = Number(purchase.cash_account_id || 0);
+                const account = requestedCashAccountId > 0
+                    ? db.prepare("SELECT id FROM cash_accounts WHERE id = ? AND is_active = 1").get(requestedCashAccountId)
+                    : db.prepare("SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' AND is_active = 1").get();
                 if (!account) throw new Error("الخزنة الرئيسية غير موجودة");
                 db.prepare(`
                     INSERT INTO purchase_payments (purchase_id, amount, payment_method)
@@ -495,13 +568,14 @@ function registerOperations(ipcMain, db) {
                 ${contactColumn} AS contact_id,
                 c.name AS contact_name, ${invoiceTable}.total_amount AS total,
                 ${invoiceTable}.paid_amount AS paid,
-                ${invoiceTable}.remaining_amount AS remaining, ${invoiceTable}.created_at
+                ${invoiceTable}.remaining_amount AS remaining, ${invoiceTable}.created_at,
+                ${entity === "customers" ? `${invoiceTable}.due_date` : "NULL AS due_date"}
             FROM ${invoiceTable}
             JOIN ${entity} c ON c.id = ${invoiceTable}.${contactColumn}
             WHERE ${invoiceTable}.remaining_amount > 0
                 AND ${invoiceTable}.status = 'completed'
-            ORDER BY ${invoiceTable}.id DESC
-            LIMIT 500
+            ORDER BY ${entity === "customers" ? `CASE WHEN ${invoiceTable}.due_date IS NULL OR ${invoiceTable}.due_date = '' THEN 1 ELSE 0 END, ${invoiceTable}.due_date ASC,` : ""} ${invoiceTable}.id DESC
+            ${entity === "customers" ? "" : "LIMIT 500"}
         `).all());
 
         const balanceExpression = entity === "customers"
@@ -613,6 +687,11 @@ function registerOperations(ipcMain, db) {
         return { success: true, id: Number(result.lastInsertRowid) };
     });
 
+    ipcMain.handle("cash:getAccounts", () => db.prepare(`
+        SELECT id, name FROM cash_accounts
+        WHERE is_active = 1
+        ORDER BY CASE WHEN name = 'الخزنة الرئيسية' THEN 0 ELSE 1 END, id
+    `).all());
     ipcMain.handle("cash:getSummary", () => db.prepare(`
         SELECT ca.id, ca.name, ca.opening_balance,
             ca.opening_balance + COALESCE(SUM(
@@ -626,7 +705,13 @@ function registerOperations(ipcMain, db) {
     `).all());
 
     ipcMain.handle("cash:getTransactions", () => db.prepare(`
-        SELECT ct.*, ca.name AS account_name
+        SELECT ct.*, ca.name AS account_name,
+            CASE
+                WHEN ct.transaction_type IN ('manual_income', 'manual_expense')
+                 AND ct.reference_type IS NULL
+                 AND ct.reference_id IS NULL
+                THEN 1 ELSE 0
+            END AS can_delete
         FROM cash_transactions ct
         JOIN cash_accounts ca ON ca.id = ct.cash_account_id
         ORDER BY ct.id DESC
@@ -636,6 +721,183 @@ function registerOperations(ipcMain, db) {
     ipcMain.handle("cash:getExpenseCategories", () => db.prepare(`
         SELECT id, name FROM expense_categories WHERE is_active = 1 ORDER BY name
     `).all());
+
+    ipcMain.handle("cash:getExpenses", () => db.prepare(`
+        SELECT
+            e.id,
+            e.amount,
+            e.description,
+            e.created_at,
+            ca.name AS account_name,
+            ec.name AS category_name,
+            CASE
+                WHEN e.reference_type = 'cash_transaction'
+                    AND e.reference_id IS NOT NULL
+                    AND EXISTS (
+                        SELECT 1
+                        FROM cash_transactions ct
+                        WHERE ct.id = e.reference_id
+                          AND ct.cash_account_id = e.cash_account_id
+                          AND ct.transaction_type = 'manual_expense'
+                          AND ct.direction = 'out'
+                          AND ABS(ct.amount - e.amount) < 0.005
+                    )
+                THEN 1 ELSE 0
+            END AS can_delete
+        FROM expenses e
+        LEFT JOIN cash_accounts ca ON ca.id = e.cash_account_id
+        LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
+        ORDER BY e.id DESC
+    `).all());
+
+    ipcMain.handle("cash:deleteExpense", (_event, expenseId) => db.transaction(() => {
+        const id = Number(expenseId);
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            throw new Error("رقم المصروف غير صحيح");
+        }
+
+        const expense = db.prepare(`
+            SELECT id, cash_account_id, amount, reference_type, reference_id
+            FROM expenses
+            WHERE id = ?
+        `).get(id);
+
+        if (!expense) {
+            throw new Error("المصروف غير موجود");
+        }
+
+        if (
+            expense.reference_type !== "cash_transaction" ||
+            !expense.reference_id ||
+            !expense.cash_account_id
+        ) {
+            throw new Error("لا يمكن حذف هذا المصروف من الصفحة الحالية");
+        }
+
+        const transaction = db.prepare(`
+            SELECT id, cash_account_id, transaction_type, direction, amount
+            FROM cash_transactions
+            WHERE id = ? AND cash_account_id = ?
+        `).get(
+            Number(expense.reference_id),
+            Number(expense.cash_account_id)
+        );
+
+        if (
+            !transaction ||
+            transaction.transaction_type !== "manual_expense" ||
+            transaction.direction !== "out"
+        ) {
+            throw new Error("حركة الخزنة المرتبطة غير صالحة؛ لم يتم حذف شيء");
+        }
+
+        if (Math.abs(Number(transaction.amount) - Number(expense.amount)) > 0.009) {
+            throw new Error("المبلغ لا يطابق حركة الخزنة؛ لم يتم حذف شيء");
+        }
+
+        const linkedCount = db.prepare(`
+            SELECT COUNT(*) AS count
+            FROM expenses
+            WHERE reference_type = 'cash_transaction'
+              AND reference_id = ?
+        `).get(Number(transaction.id));
+
+        if (Number(linkedCount.count) !== 1) {
+            throw new Error("الحركة مرتبطة بسجلات أخرى؛ لم يتم حذف شيء");
+        }
+
+        const deletedExpense = db.prepare(`
+            DELETE FROM expenses
+            WHERE id = ?
+              AND reference_type = 'cash_transaction'
+              AND reference_id = ?
+        `).run(id, Number(transaction.id));
+
+        if (deletedExpense.changes !== 1) {
+            throw new Error("تعذر حذف سجل المصروف");
+        }
+
+        const deletedTransaction = db.prepare(`
+            DELETE FROM cash_transactions
+            WHERE id = ?
+              AND cash_account_id = ?
+              AND transaction_type = 'manual_expense'
+              AND direction = 'out'
+        `).run(Number(transaction.id), Number(transaction.cash_account_id));
+
+        if (deletedTransaction.changes !== 1) {
+            throw new Error("تعذر حذف حركة الخزنة");
+        }
+
+        return {
+            success: true,
+            restoredAmount: Number(expense.amount)
+        };
+    })());
+
+    ipcMain.handle("cash:deleteManualTransaction", (_event, transactionId) => db.transaction(() => {
+        const id = Number(transactionId);
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            throw new Error("رقم الحركة غير صحيح");
+        }
+
+        const tx = db.prepare(`
+            SELECT *
+            FROM cash_transactions
+            WHERE id = ?
+        `).get(id);
+
+        if (!tx) {
+            throw new Error("الحركة النقدية غير موجودة");
+        }
+
+        if (
+            !["manual_income", "manual_expense"].includes(tx.transaction_type) ||
+            tx.reference_type != null ||
+            tx.reference_id != null
+        ) {
+            throw new Error("لا يمكن حذف حركة مرتبطة بفاتورة أو عملية أخرى من صفحة الخزنة");
+        }
+
+        const linkedExpenses = db.prepare(`
+            SELECT id, cash_account_id, amount
+            FROM expenses
+            WHERE reference_type = 'cash_transaction'
+              AND reference_id = ?
+        `).all(id);
+
+        if (tx.transaction_type === "manual_expense") {
+            if (
+                linkedExpenses.length !== 1 ||
+                Number(linkedExpenses[0].cash_account_id) !== Number(tx.cash_account_id) ||
+                Math.abs(Number(linkedExpenses[0].amount) - Number(tx.amount)) > 0.009
+            ) {
+                throw new Error("تعذر مطابقة المصروف مع حركة الخزنة؛ لم يتم حذف شيء");
+            }
+
+            db.prepare(`
+                DELETE FROM expenses WHERE id = ?
+            `).run(Number(linkedExpenses[0].id));
+        } else if (linkedExpenses.length !== 0) {
+            throw new Error("الحركة مرتبطة بسجل مصروف؛ لم يتم حذف شيء");
+        }
+
+        const result = db.prepare(`
+            DELETE FROM cash_transactions
+            WHERE id = ?
+              AND transaction_type IN ('manual_income', 'manual_expense')
+              AND reference_type IS NULL
+              AND reference_id IS NULL
+        `).run(id);
+
+        if (result.changes !== 1) {
+            throw new Error("تعذر حذف الحركة النقدية");
+        }
+
+        return { success: true, deletedAmount: Number(tx.amount) };
+    })());
 
     ipcMain.handle("cash:addTransaction", (_event, entry) => db.transaction(() => {
         const direction = entry?.direction;
@@ -664,6 +926,72 @@ function registerOperations(ipcMain, db) {
         return { success: true, transactionId: Number(result.lastInsertRowid) };
     })());
 
+    // Printable cash statement for the same date range selected in Reports.
+    ipcMain.handle("cash:getStatement", (_event, range = {}) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const from = range.from || today;
+        const to = range.to || today;
+        const validDate = (value) => {
+            if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+            const date = new Date(`${value}T00:00:00.000Z`);
+            return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+        };
+        if (!validDate(from) || !validDate(to) || from > to) {
+            throw new Error("نطاق التاريخ غير صحيح");
+        }
+
+        const accounts = db.prepare(`
+            SELECT ca.id, ca.name,
+                COALESCE(ca.opening_balance, 0) + COALESCE((
+                    SELECT SUM(CASE WHEN prior_ct.direction = 'in'
+                        THEN prior_ct.amount ELSE -prior_ct.amount END)
+                    FROM cash_transactions prior_ct
+                    WHERE prior_ct.cash_account_id = ca.id
+                      AND date(prior_ct.created_at, 'localtime') < ?
+                ), 0) AS opening_balance,
+                COALESCE((
+                    SELECT SUM(period_ct.amount)
+                    FROM cash_transactions period_ct
+                    WHERE period_ct.cash_account_id = ca.id
+                      AND date(period_ct.created_at, 'localtime') BETWEEN ? AND ?
+                      AND period_ct.direction = 'in'
+                ), 0) AS total_in,
+                COALESCE((
+                    SELECT SUM(period_ct.amount)
+                    FROM cash_transactions period_ct
+                    WHERE period_ct.cash_account_id = ca.id
+                      AND date(period_ct.created_at, 'localtime') BETWEEN ? AND ?
+                      AND period_ct.direction = 'out'
+                ), 0) AS total_out
+            FROM cash_accounts ca
+            ORDER BY CASE WHEN ca.name = 'الخزنة الرئيسية' THEN 0 ELSE 1 END, ca.id
+        `).all(from, from, to, from, to).map((account) => ({
+            ...account,
+            id: Number(account.id),
+            opening_balance: Number(account.opening_balance || 0),
+            total_in: Number(account.total_in || 0),
+            total_out: Number(account.total_out || 0),
+            closing_balance: Number(account.opening_balance || 0)
+                + Number(account.total_in || 0) - Number(account.total_out || 0)
+        }));
+
+        const transactions = db.prepare(`
+            SELECT ct.id, ct.cash_account_id, ca.name AS account_name,
+                ct.transaction_type, ct.direction, ct.amount,
+                ct.reference_type, ct.reference_id, ct.description, ct.created_at
+            FROM cash_transactions ct
+            JOIN cash_accounts ca ON ca.id = ct.cash_account_id
+            WHERE date(ct.created_at, 'localtime') BETWEEN ? AND ?
+            ORDER BY datetime(ct.created_at), ct.id
+        `).all(from, to).map((transaction) => ({
+            ...transaction,
+            id: Number(transaction.id),
+            cash_account_id: Number(transaction.cash_account_id),
+            amount: Number(transaction.amount || 0)
+        }));
+
+        return { from, to, accounts, transactions };
+    });
     ipcMain.handle("reports:getSummary", (_event, range = {}) => {
         const today = new Date().toISOString().slice(0, 10);
         const from = range.from || today;
@@ -677,7 +1005,12 @@ function registerOperations(ipcMain, db) {
             throw new Error("نطاق التاريخ غير صحيح");
         }
         const sales = db.prepare(`
-            SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total,
+            SELECT COUNT(*) AS count,
+                COALESCE(SUM(s.total_amount), 0) - COALESCE((
+                    SELECT SUM(sr.total_amount)
+                    FROM sales_returns sr
+                    WHERE date(sr.created_at, 'localtime') BETWEEN ? AND ?
+                ), 0) AS total,
                 COALESCE(SUM(paid_amount), 0) AS paid,
                 COALESCE(SUM(remaining_amount), 0) AS remaining,
                 COALESCE(SUM(
@@ -686,10 +1019,32 @@ function registerOperations(ipcMain, db) {
                     - COALESCE(s.plumbing_discount_amount, 0)
                     - COALESCE(s.trader_discount_amount, 0)
                     - COALESCE(s.general_discount_amount, 0)
+                ), 0) - COALESCE((
+                    SELECT SUM(sri.total_amount - sri.quantity * COALESCE(si.purchase_price, p.purchase_price, 0))
+                    FROM sales_returns sr
+                    JOIN sales_return_items sri ON sri.return_id = sr.id
+                    LEFT JOIN sale_items si ON si.id = sri.sale_item_id
+                    LEFT JOIN products p ON p.id = sri.product_id
+                    WHERE date(sr.created_at, 'localtime') BETWEEN ? AND ?
                 ), 0) AS profit
             FROM sales s
             WHERE date(s.created_at, 'localtime') BETWEEN ? AND ? AND s.status = 'completed'
+        `).get(from, to, from, to, from, to);
+        const quickSales = db.prepare(`
+            SELECT COUNT(DISTINCT qt.id) AS count, COALESCE(SUM(qi.total_amount), 0) AS total,
+                COALESCE(SUM((qi.unit_price - qi.purchase_price) * qi.quantity), 0) AS profit
+            FROM quick_transactions qt LEFT JOIN quick_transaction_items qi ON qi.transaction_id = qt.id
+            WHERE qt.transaction_type = 'sale' AND date(qt.created_at, 'localtime') BETWEEN ? AND ?
         `).get(from, to);
+        const quickReturns = db.prepare(`
+            SELECT COALESCE(SUM(qi.total_amount), 0) AS total,
+                COALESCE(SUM((qi.unit_price - qi.purchase_price) * qi.quantity), 0) AS profit
+            FROM quick_transactions qt LEFT JOIN quick_transaction_items qi ON qi.transaction_id = qt.id
+            WHERE qt.transaction_type = 'return' AND date(qt.created_at, 'localtime') BETWEEN ? AND ?
+        `).get(from, to);
+        sales.total = Number(sales.total || 0) + Number(quickSales.total || 0) - Number(quickReturns.total || 0);
+        sales.paid = Number(sales.paid || 0) + Number(quickSales.total || 0) - Number(quickReturns.total || 0);
+        sales.profit = Number(sales.profit || 0) + Number(quickSales.profit || 0) - Number(quickReturns.profit || 0);
         const purchases = db.prepare(`
             SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total,
                 COALESCE(SUM(paid_amount), 0) AS paid,
@@ -701,10 +1056,23 @@ function registerOperations(ipcMain, db) {
             WHERE date(created_at, 'localtime') BETWEEN ? AND ?
         `).get(from, to);
         const stock = db.prepare(`
-            SELECT COALESCE(SUM(s.quantity * p.purchase_price), 0) AS value
-            FROM stock s JOIN products p ON p.id = s.product_id WHERE p.is_active = 1
+            SELECT
+                COALESCE(SUM(s.quantity * p.purchase_price), 0) AS value,
+                COALESCE(SUM(s.quantity * p.sale_price), 0) AS retailValue
+            FROM stock s
+            JOIN products p ON p.id = s.product_id
+            WHERE p.is_active = 1
         `).get();
-        return { from, to, sales, purchases, expenses: expenses.total, stockValue: stock.value };
+
+        return {
+            from,
+            to,
+            sales,
+            purchases,
+            expenses: expenses.total,
+            stockValue: stock.value,
+            stockRetailValue: stock.retailValue
+        };
     });
 
     ipcMain.handle("settings:getAll", () => {

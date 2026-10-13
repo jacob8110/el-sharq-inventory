@@ -1,0 +1,834 @@
+
+========== BACKEND: main.js ==========
+لم يتم العثور على معالج الحفظ بهذه الأسماء
+
+========== BACKEND: src\database\operations.js ==========
+--- السطر 151 ---
+                    WHERE product_id = ? AND id > ?
+                    LIMIT 1
+                `).get(item.product_id, lastInvoiceMovement)) {
+                    throw new Error("لا يمكن حذف الفاتورة بأمان بعد وجود حركة لاحقة لأحد أصنافها");
+                }
+                const product = db.prepare(`
+                    SELECT purchase_price, updated_at FROM products WHERE id = ?
+                `).get(item.product_id);
+                if (product.updated_at > purchase.created_at) {
+                    throw new Error("تم تعديل بيانات تكلفة أحد الأصناف بعد الفاتورة؛ لا يمكن عكس التكلفة بأمان");
+                }
+            }
+
+            for (const item of items) {
+                db.prepare(`
+                    UPDATE stock SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE product_id = ? AND location_id = ?
+                `).run(item.quantity, item.product_id, item.location_id);
+                addStockMovement.run(
+                    item.product_id,
+                    item.location_id,
+                    "adjustment",
+                    -Number(item.quantity),
+                    "purchase_delete",
+                    id,
+                    `حذف فاتورة الشراء ${purchase.invoice_number}`
+                );
+            }
+
+            for (const item of productItems) {
+                let previousCost = Number(item.previous_purchase_price || 0);
+                let previousManual = item.previous_purchase_price_manual;
+                if (Number(item.previous_cost_count) !== Number(item.item_count)) {
+                    const currentStock = Number(db.prepare(`
+                        SELECT COALESCE(SUM(quantity), 0) AS quantity FROM stock WHERE product_id = ?
+                    `).get(item.product_id).quantity);
+                    const previousStock = currentStock + Number(item.quantity);
+                    previousCost = currentStock > 0
+                        ? Math.max(0, (
+                            Number(db.prepare("SELECT purchase_price FROM products WHERE id = ?")
+                                .get(item.product_id).purchase_price) * previousStock - Number(item.cost)
+                        ) / currentStock)
+                        : 0;
+                    previousManual = null;
+                }
+                if (Number(item.previous_manual_count) !== Number(item.item_count)) {
+                    previousManual = null;
+                }
+                db.prepare(`
+                    UPDATE products SET purchase_price = ?,
+                        purchase_price_manual = COALESCE(?, purchase_price_manual),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `).run(previousCost, previousManual, item.product_id);
+            }
+
+            db.prepare(`
+                DELETE FROM supplier_transactions
+                WHERE reference_type = 'purchase' AND reference_id = ?
+            `).run(id);
+            db.prepare(`
+                DELETE FROM cash_transactions
+                WHERE reference_type = 'purchase' AND reference_id = ?
+            `).run(id);
+            db.prepare("DELETE FROM purchases WHERE id = ?").run(id);
+            return { success: true };
+        })();
+    });
+
+    ipcMain.handle("purchases:create", (_event, purchase) => {
+        if (!purchase || !Array.isArray(purchase.items) || purchase.items.length === 0) {
+            throw new Error("أضف صنفًا واحدًا على الأقل للفاتورة");
+        }
+        return db.transaction(() => {
+            const location = getLocation(purchase.location_id);
+            if (purchase.supplier_name !== undefined && purchase.supplier_name !== null &&
+                typeof purchase.supplier_name !== "string") {
+                throw new Error("اسم المورد غير صحيح");
+            }
+            const supplierNameInput = purchase.supplier_name?.trim().replace(/\s+/gu, " ") || "";
+            let supplierId = purchase.supplier_id ? Number(purchase.supplier_id) : null;
+            if (supplierNameInput) {
+                const existingSupplier = db.prepare(`
+                    SELECT id, is_active FROM suppliers
+                    WHERE name = ? COLLATE NOCASE
+                    ORDER BY is_active DESC, id
+                    LIMIT 1
+                `).get(supplierNameInput);
+                if (existingSupplier) {
+                    supplierId = Number(existingSupplier.id);
+                    if (!Number(existingSupplier.is_active)) {
+                        db.prepare(`
+                            UPDATE suppliers SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        `).run(supplierId);
+                    }
+                } else {
+                    const result = db.prepare(`
+                        INSERT INTO suppliers (name, is_active) VALUES (?, 1)
+                    `).run(supplierNameInput);
+                    supplierId = Number(result.lastInsertRowid);
+                }
+            }
+            if (supplierId && !db.prepare(
+                "SELECT id FROM suppliers WHERE id = ? AND is_active = 1"
+            ).get(supplierId)) {
+                throw new Error("المورد غير موجود أو غير نشط");
+            }
+
+            const items = purchase.items.map((item) => {
+                const productId = Number(item.product_id);
+                const product = db.prepare(`
+                    SELECT id, name, purchase_price, purchase_price_manual FROM products
+                    WHERE id = ? AND is_active = 1
+                `).get(productId);
+                if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+                const quantity = finiteNumber(item.quantity, `كمية ${product.name}`, { min: Number.MIN_VALUE });
+                const unitCost = finiteNumber(item.unit_cost, `سعر شراء ${product.name}`);
+                return { product, productId, quantity, unitCost, total: quantity * unitCost };
+            });
+
+            const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+            const discount = finiteNumber(purchase.discount_amount || 0, "الخصم");
+            if (discount > subtotal) throw new Error("الخصم أكبر من إجمالي الفاتورة");
+            const total = subtotal - discount;
+            const paid = finiteNumber(purchase.paid_amount || 0, "المبلغ المدفوع");
+            if (paid > total) throw new Error("المبلغ المدفوع أكبر من إجمالي الفاتورة");
+            const remaining = total - paid;
+            const nextInvoiceId = db.prepare(
+                "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM purchases"
+            ).get().nextId;
+            const invoiceNumber = `B-${String(nextInvoiceId).padStart(6, "0")}`;
+            const result = db.prepare(`
+                INSERT INTO purchases
+                    (invoice_number, supplier_id, purchase_type, subtotal, discount_amount,
+                     total_amount, paid_amount, remaining_amount, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                invoiceNumber,
+                supplierId,
+                remaining > 0 ? "credit" : "cash",
+                subtotal,
+                discount,
+                total,
+                paid,
+                remaining,
+                purchase.notes?.trim() || null
+            );
+            const purchaseId = Number(result.lastInsertRowid);
+
+            const insertItem = db.prepare(`
+                INSERT INTO purchase_items
+                    (purchase_id, product_id, location_id, quantity, unit_cost, total_amount,
+                     previous_purchase_price, previous_purchase_price_manual)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            const productTotals = new Map();
+            for (const item of items) {
+                const productTotal = productTotals.get(item.productId) || {
+------------------------------
+--- السطر 212 ---
+                DELETE FROM cash_transactions
+                WHERE reference_type = 'purchase' AND reference_id = ?
+            `).run(id);
+            db.prepare("DELETE FROM purchases WHERE id = ?").run(id);
+            return { success: true };
+        })();
+    });
+
+    ipcMain.handle("purchases:create", (_event, purchase) => {
+        if (!purchase || !Array.isArray(purchase.items) || purchase.items.length === 0) {
+            throw new Error("أضف صنفًا واحدًا على الأقل للفاتورة");
+        }
+        return db.transaction(() => {
+            const location = getLocation(purchase.location_id);
+            if (purchase.supplier_name !== undefined && purchase.supplier_name !== null &&
+                typeof purchase.supplier_name !== "string") {
+                throw new Error("اسم المورد غير صحيح");
+            }
+            const supplierNameInput = purchase.supplier_name?.trim().replace(/\s+/gu, " ") || "";
+            let supplierId = purchase.supplier_id ? Number(purchase.supplier_id) : null;
+            if (supplierNameInput) {
+                const existingSupplier = db.prepare(`
+                    SELECT id, is_active FROM suppliers
+                    WHERE name = ? COLLATE NOCASE
+                    ORDER BY is_active DESC, id
+                    LIMIT 1
+                `).get(supplierNameInput);
+                if (existingSupplier) {
+                    supplierId = Number(existingSupplier.id);
+                    if (!Number(existingSupplier.is_active)) {
+                        db.prepare(`
+                            UPDATE suppliers SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        `).run(supplierId);
+                    }
+                } else {
+                    const result = db.prepare(`
+                        INSERT INTO suppliers (name, is_active) VALUES (?, 1)
+                    `).run(supplierNameInput);
+                    supplierId = Number(result.lastInsertRowid);
+                }
+            }
+            if (supplierId && !db.prepare(
+                "SELECT id FROM suppliers WHERE id = ? AND is_active = 1"
+            ).get(supplierId)) {
+                throw new Error("المورد غير موجود أو غير نشط");
+            }
+
+            const items = purchase.items.map((item) => {
+                const productId = Number(item.product_id);
+                const product = db.prepare(`
+                    SELECT id, name, purchase_price, purchase_price_manual FROM products
+                    WHERE id = ? AND is_active = 1
+                `).get(productId);
+                if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+                const quantity = finiteNumber(item.quantity, `كمية ${product.name}`, { min: Number.MIN_VALUE });
+                const unitCost = finiteNumber(item.unit_cost, `سعر شراء ${product.name}`);
+                return { product, productId, quantity, unitCost, total: quantity * unitCost };
+            });
+
+            const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+            const discount = finiteNumber(purchase.discount_amount || 0, "الخصم");
+            if (discount > subtotal) throw new Error("الخصم أكبر من إجمالي الفاتورة");
+            const total = subtotal - discount;
+            const paid = finiteNumber(purchase.paid_amount || 0, "المبلغ المدفوع");
+            if (paid > total) throw new Error("المبلغ المدفوع أكبر من إجمالي الفاتورة");
+            const remaining = total - paid;
+            const nextInvoiceId = db.prepare(
+                "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM purchases"
+            ).get().nextId;
+            const invoiceNumber = `B-${String(nextInvoiceId).padStart(6, "0")}`;
+            const result = db.prepare(`
+                INSERT INTO purchases
+                    (invoice_number, supplier_id, purchase_type, subtotal, discount_amount,
+                     total_amount, paid_amount, remaining_amount, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                invoiceNumber,
+                supplierId,
+                remaining > 0 ? "credit" : "cash",
+                subtotal,
+                discount,
+                total,
+                paid,
+                remaining,
+                purchase.notes?.trim() || null
+            );
+            const purchaseId = Number(result.lastInsertRowid);
+
+            const insertItem = db.prepare(`
+                INSERT INTO purchase_items
+                    (purchase_id, product_id, location_id, quantity, unit_cost, total_amount,
+                     previous_purchase_price, previous_purchase_price_manual)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            const productTotals = new Map();
+            for (const item of items) {
+                const productTotal = productTotals.get(item.productId) || {
+                    quantity: 0,
+                    total: 0,
+                    previousCost: Number(item.product.purchase_price)
+                };
+                productTotal.quantity += item.quantity;
+                productTotal.total += item.total;
+                productTotals.set(item.productId, productTotal);
+                ensureStockRow.run(item.productId, location.id);
+                insertItem.run(
+                    purchaseId,
+                    item.productId,
+                    location.id,
+                    item.quantity,
+                    item.unitCost,
+                    item.total,
+                    Number(item.product.purchase_price),
+                    Number(item.product.purchase_price_manual || 0)
+                );
+                db.prepare(`
+                    UPDATE stock SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE product_id = ? AND location_id = ?
+                `).run(item.quantity, item.productId, location.id);
+                addStockMovement.run(
+                    item.productId,
+                    location.id,
+                    "purchase",
+                    item.quantity,
+                    "purchase",
+                    purchaseId,
+                    `فاتورة شراء ${invoiceNumber}`
+                );
+            }
+            const costFactor = subtotal > 0 ? total / subtotal : 1;
+            for (const [productId, productTotal] of productTotals) {
+                const latestNetCost = productTotal.quantity > 0
+                    ? productTotal.total * costFactor / productTotal.quantity
+                    : productTotal.previousCost;
+                db.prepare(`
+                    UPDATE products SET purchase_price = ?, purchase_price_manual = 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `).run(latestNetCost, productId);
+            }
+
+            if (supplierId) {
+                db.prepare(`
+                    INSERT INTO supplier_transactions
+                        (supplier_id, transaction_type, reference_type, reference_id, debit, credit, notes)
+                    VALUES (?, 'purchase', 'purchase', ?, 0, ?, ?)
+                `).run(supplierId, purchaseId, total, `فاتورة شراء ${invoiceNumber}`);
+                if (paid > 0) {
+                    db.prepare(`
+                        INSERT INTO supplier_transactions
+                            (supplier_id, transaction_type, reference_type, reference_id, debit, credit, notes)
+                        VALUES (?, 'payment', 'purchase', ?, ?, 0, ?)
+                    `).run(supplierId, purchaseId, paid, `دفع على فاتورة ${invoiceNumber}`);
+                }
+            }
+
+            if (paid > 0) {
+                const account = db.prepare(`
+------------------------------
+--- السطر 908 ---
+        `).get(from, to);
+        sales.total = Number(sales.total || 0) + Number(quickSales.total || 0) - Number(quickReturns.total || 0);
+        sales.paid = Number(sales.paid || 0) + Number(quickSales.total || 0) - Number(quickReturns.total || 0);
+        sales.profit = Number(sales.profit || 0) + Number(quickSales.profit || 0) - Number(quickReturns.profit || 0);
+        const purchases = db.prepare(`
+            SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total,
+                COALESCE(SUM(paid_amount), 0) AS paid,
+                COALESCE(SUM(remaining_amount), 0) AS remaining
+            FROM purchases WHERE date(created_at, 'localtime') BETWEEN ? AND ? AND status = 'completed'
+        `).get(from, to);
+        const expenses = db.prepare(`
+            SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
+            WHERE date(created_at, 'localtime') BETWEEN ? AND ?
+        `).get(from, to);
+        const stock = db.prepare(`
+            SELECT
+                COALESCE(SUM(s.quantity * p.purchase_price), 0) AS value,
+                COALESCE(SUM(s.quantity * p.sale_price), 0) AS retailValue
+            FROM stock s
+            JOIN products p ON p.id = s.product_id
+            WHERE p.is_active = 1
+        `).get();
+
+        return {
+            from,
+            to,
+            sales,
+            purchases,
+            expenses: expenses.total,
+            stockValue: stock.value,
+            stockRetailValue: stock.retailValue
+        };
+    });
+
+    ipcMain.handle("settings:getAll", () => {
+        const values = Object.fromEntries(
+            db.prepare(`
+                SELECT setting_key, setting_value FROM settings
+                WHERE setting_key NOT IN ('deletion_password_salt', 'deletion_password_hash')
+            `).all().map((row) => [row.setting_key, row.setting_value])
+        );
+        values.deletion_password_configured = Boolean(
+            db.prepare("SELECT 1 FROM settings WHERE setting_key = 'deletion_password_hash'").get()
+        );
+        return values;
+    });
+
+    ipcMain.handle("settings:save", (_event, settings) => {
+        const allowed = ["store_name", "store_phone", "store_address"];
+        const entries = Object.entries(settings || {});
+        if (entries.some(([key]) => !allowed.includes(key))) throw new Error("إعداد غير مسموح");
+        const save = db.prepare(`
+            INSERT INTO settings (setting_key, setting_value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(setting_key) DO UPDATE SET
+                setting_value = excluded.setting_value,
+                updated_at = CURRENT_TIMESTAMP
+        `);
+        db.transaction(() => {
+            for (const [key, value] of entries) {
+                save.run(key, String(value ?? "").trim());
+            }
+        })();
+        return { success: true };
+    });
+
+    ipcMain.handle("settings:setDeletionPassword", (_event, currentPassword, newPassword) =>
+        setDeletionPassword(db, currentPassword, newPassword)
+    );
+}
+
+module.exports = registerOperations;
+------------------------------
+
+========== PURCHASES UI ==========
+  123:     async function purchases() {
+  124:         const [products, suppliers, locations, invoices] = await Promise.all([
+  125:             window.elSharq.getProducts(),
+  126:             window.elSharq.getSuppliers(),
+  127:             window.elSharq.getLocations(),
+  128:             window.elSharq.getPurchases()
+  129:         ]);
+  130:         const renderPurchaseRows = (purchaseRows) => purchaseRows.length
+  131:             ? purchaseRows.map((invoice) => `<tr data-purchase-row data-purchase-id="${invoice.id}" data-purchase-supplier="${invoice.supplier_id || ""}" data-purchase-invoice="${escape(invoice.invoice_number)}" data-purchase-search="${escape(`${invoice.invoice_number} ${invoice.supplier_name || "مورد غير مسجل"} ${invoice.notes || ""}`)}"><td>${escape(invoice.invoice_number)}</td><td>${dateText(invoice.created_at)}</td><td>${escape(invoice.supplier_name || "مورد غير مسجل")}</td><td>${money(invoice.total)} ج.م</td><td>${money(invoice.paid)} ج.م</td><td>${money(invoice.remaining)} ج.م</td><td><button class="view-btn" type="button" data-print-purchase-id="${invoice.id}">طباعة</button> <button class="delete-btn" type="button" data-delete-purchase-id="${invoice.id}">حذف</button></td></tr>`).join("")
+  132:             : '<tr><td colspan="7">لا توجد فواتير مطابقة</td></tr>';
+  133:         let visibleInvoices = invoices;
+  134:         const page = content("المشتريات", "تسجيل فواتير الشراء وتحديث المخزون وحساب المورد.", `
+  135:             <div class="sales-panel">
+  136:                 <div class="sales-panel-header"><div><h3>فاتورة شراء جديدة</h3><span>تضاف الكميات للمخزون عند الحفظ</span></div></div>
+  137:                 <form id="purchaseForm">
+  138:                     <div class="sale-info-grid">
+  139:                         <div class="form-field"><label for="purchaseSupplierName">المورد / الشركة</label><input id="purchaseSupplierName" type="text" list="purchaseSupplierOptions" autocomplete="off" placeholder="اكتب اسم المورد أو اختره"><datalist id="purchaseSupplierOptions">${suppliers.map((s) => `<option value="${escape(s.name)}"></option>`).join("")}</datalist></div>
+  140:                         <div class="form-field"><label for="purchaseLocation">مكان التخزين</label><select id="purchaseLocation">${locations.map((l) => `<option value="${l.id}">${escape(l.name)}</option>`).join("")}</select></div>
+  141:                     </div>
+  142:                     <div class="sale-add-product">
+  143:                         ${productPicker("purchaseProductSearch", "purchaseProductDropdown", "purchaseProduct", products.filter((p) => p.active))}
+  144:                         <div class="form-field"><label id="purchaseQtyLabel" for="purchaseQty">الكمية</label><input id="purchaseQty" type="number" min="0.01" step="0.01" required></div>
+  145:                         <div class="form-field"><label id="purchaseCostLabel" for="purchaseCost">تكلفة الوحدة قبل الخصم</label><input id="purchaseCost" type="number" min="0" step="0.01" required></div>
+  146:                         <button class="secondary-button" id="purchaseAddItem" type="button">إضافة الصنف</button>
+  147:                     </div>
+  148:                     <div class="last-invoices-table-wrapper"><table class="last-invoices-table"><thead><tr><th>الصنف</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody id="purchaseItems"><tr><td colspan="5">لم تتم إضافة أصناف</td></tr></tbody></table></div>
+  149:                     <div class="sale-info-grid">
+  150:                         <div class="form-field"><label for="purchaseDiscountType">طريقة الخصم</label><select id="purchaseDiscountType"><option value="amount">قيمة ثابتة</option><option value="percent">نسبة مئوية</option></select></div>
+  151:                         <div class="form-field"><label id="purchaseDiscountLabel" for="purchaseDiscount">قيمة الخصم</label><input id="purchaseDiscount" type="number" min="0" step="0.01" value="0"></div>
+  152:                         <div class="form-field"><label for="purchasePaid">المبلغ المدفوع</label><input id="purchasePaid" type="number" min="0" step="0.01" value="0"></div>
+  153:                         <div class="form-field"><label for="purchaseNotes">ملاحظات</label><input id="purchaseNotes" type="text"></div>
+  154:                     </div>
+  155:                     <p id="purchaseTotal">الإجمالي: 0.00 ج.م</p>
+  156:                     <p class="purchase-cost-note">يُوزّع خصم الفاتورة على الأصناف بنسبة قيمتها، وتُحدّث تكلفة المخزون الحالية إلى صافي آخر شراء. الفواتير السابقة لا تتغير.</p>
+  157:                     <div id="purchaseMessage" class="product-form-message"></div>
+  158:                     <button class="primary-button" type="submit">حفظ فاتورة الشراء</button>
+  159:                 </form>
+  160:             </div>
+  161:             <div class="last-invoices-panel">
+  162:                 <h3>فواتير الشراء</h3>
+  163:                 <div class="products-toolbar">
+  164:                     <div class="search-box"><span>⌕</span><input id="purchaseHistorySearch" type="search" placeholder="ابحث برقم الفاتورة أو اسم المورد أو الملاحظات"></div>
+  165:                     <div class="form-field"><label for="purchaseHistorySupplier">فواتير مورد محدد</label><select id="purchaseHistorySupplier"><option value="">كل الموردين</option>${suppliers.map((s) => `<option value="${s.id}">${escape(s.name)}</option>`).join("")}</select></div>
+  166:                 </div>
+  167:                 <div id="purchaseHistoryMessage" class="product-form-message"></div>
+  168:                 <div class="last-invoices-table-wrapper"><table class="last-invoices-table"><thead><tr><th>الفاتورة</th><th>التاريخ</th><th>المورد</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>إجراءات</th></tr></thead><tbody id="purchaseHistoryRows">${renderPurchaseRows(invoices)}</tbody></table></div>
+  169:             </div>
+  170:         `);
+  171:         const items = [];
+  172:         const productSelect = page.querySelector("#purchaseProduct");
+  173:         const purchasePicker = setupProductPicker(page, {
+  174:             inputId: "purchaseProductSearch",
+  175:             dropdownId: "purchaseProductDropdown",
+  176:             selectId: "purchaseProduct",
+  177:             products: products.filter((p) => p.active)
+  178:         });
+  179:         const getPurchaseDiscount = (subtotal) => {
+  180:             const discountInput = Number(page.querySelector("#purchaseDiscount").value || 0);
+  181:             return page.querySelector("#purchaseDiscountType").value === "percent"
+  182:                 ? subtotal * discountInput / 100
+  183:                 : discountInput;
+  184:         };
+  185:         const drawItems = () => {
+  186:             const body = page.querySelector("#purchaseItems");
+  187:             const total = items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0);
+  188:             body.innerHTML = items.length ? items.map((item, index) => `<tr><td>${escape(item.name)}</td><td>${item.quantity} ${escape(item.unit)}</td><td>${money(item.unit_cost)}</td><td>${money(item.quantity * item.unit_cost)}</td><td><button type="button" data-remove="${index}">حذف</button></td></tr>`).join("") : '<tr><td colspan="5">لم تتم إضافة أصناف</td></tr>';
+  189:             const discount = getPurchaseDiscount(total);
+  190:             page.querySelector("#purchaseTotal").textContent = `قبل الخصم: ${money(total)} ج.م — الخصم: ${money(discount)} ج.م — الإجمالي النهائي: ${money(Math.max(0, total - discount))} ج.م`;
+  191:             body.querySelectorAll("[data-remove]").forEach((button) => button.addEventListener("click", () => {
+  192:                 items.splice(Number(button.dataset.remove), 1);
+  193:                 drawItems();
+  194:             }));
+  195:         };
+  196:         productSelect.addEventListener("change", () => {
+  197:             const selected = productSelect.selectedOptions[0];
+  198:             const product = products.find((item) => Number(item.id) === Number(productSelect.value));
+  199:             page.querySelector("#purchaseCost").value = product?.purchase_price || "";
+  200:             const isMeter = selected?.dataset.unit === "متر";
+  201:             page.querySelector("#purchaseQtyLabel").textContent = isMeter ? "الكمية بالمتر" : "الكمية";
+  202:             page.querySelector("#purchaseCostLabel").textContent = isMeter ? "تكلفة المتر قبل الخصم" : "تكلفة الوحدة قبل الخصم";
+  203:         });
+  204:         const discountType = page.querySelector("#purchaseDiscountType");
+  205:         const discountInput = page.querySelector("#purchaseDiscount");
+  206:         const syncDiscountType = () => {
+  207:             const isPercent = discountType.value === "percent";
+  208:             page.querySelector("#purchaseDiscountLabel").textContent = isPercent ? "نسبة الخصم %" : "قيمة الخصم";
+  209:             discountInput.max = isPercent ? "100" : "";
+  210:             drawItems();
+  211:         };
+  212:         discountType.addEventListener("change", syncDiscountType);
+  213:         discountInput.addEventListener("input", drawItems);
+  214:         let historyRequest = 0;
+  215:         let historySearchTimer;
+  216:         const refreshPurchaseHistory = async () => {
+  217:             const requestId = ++historyRequest;
+  218:             try {
+  219:                 const rows = await window.elSharq.getPurchases({
+  220:                     query: page.querySelector("#purchaseHistorySearch").value,
+  221:                     supplierId: page.querySelector("#purchaseHistorySupplier").value
+  222:                 });
+  223:                 if (requestId !== historyRequest) return;
+  224:                 visibleInvoices = rows;
+  225:                 page.querySelector("#purchaseHistoryRows").innerHTML = renderPurchaseRows(rows);
+  226:                 status("purchaseHistoryMessage", "");
+  227:             } catch (error) {
+  228:                 fail("purchaseHistoryMessage", error);
+  229:             }
+  230:         };
+  231:         page.querySelector("#purchaseHistorySearch").addEventListener("input", () => {
+  232:             clearTimeout(historySearchTimer);
+  233:             historySearchTimer = setTimeout(refreshPurchaseHistory, 250);
+  234:         });
+  235:         page.querySelector("#purchaseHistorySupplier").addEventListener("change", refreshPurchaseHistory);
+  236:         page.querySelector("#purchaseAddItem").addEventListener("click", () => {
+  237:             const productId = Number(productSelect.value);
+  238:             const product = products.find((entry) => Number(entry.id) === productId);
+  239:             const quantity = Number(page.querySelector("#purchaseQty").value);
+  240:             const unitCost = Number(page.querySelector("#purchaseCost").value);
+  241:             if (!product || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
+  242:                 status("purchaseMessage", "اختر منتجًا وأدخل كمية وتكلفة صحيحتين", true);
+  243:                 return;
+  244:             }
+  245:             items.push({ product_id: productId, name: product.name, quantity, unit: product.unit || "قطعة", unit_cost: unitCost });
+  246:             page.querySelector("#purchaseQty").value = "";
+  247:             purchasePicker.clear();
+  248:             page.querySelector("#purchaseCost").value = "";
+  249:             drawItems();
+  250:             status("purchaseMessage", "");
+  251:         });
+  252:         page.querySelector("#purchaseForm").addEventListener("submit", async (event) => {
+  253:             event.preventDefault();
+  254:             if (!items.length) return status("purchaseMessage", "أضف صنفًا واحدًا على الأقل", true);
+  255:             const button = event.currentTarget.querySelector('[type="submit"]');
+  256:             button.disabled = true;
+  257:             let printWindow;
+  258:             let purchaseSaved = false;
+  259:             try {
+  260:                 printWindow = window.elSharqInvoicePrint.open();
+  261:                 const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0);
+  262:                 const discount = getPurchaseDiscount(subtotal);
+  263:                 if (discount > subtotal) {
+  264:                     button.disabled = false;
+  265:                     if (printWindow && !printWindow.closed) printWindow.close();
+  266:                     return status("purchaseMessage", "الخصم أكبر من إجمالي الفاتورة", true);
+  267:                 }
+  268:                 const result = await window.elSharq.createPurchase({
+  269:                     supplier_name: page.querySelector("#purchaseSupplierName").value.trim(),
+  270:                     location_id: page.querySelector("#purchaseLocation").value,
+  271:                     discount_amount: discount,
+  272:                     paid_amount: Number(page.querySelector("#purchasePaid").value || 0),
+  273:                     notes: page.querySelector("#purchaseNotes").value,
+  274:                     items
+  275:                 });
+  276:                 purchaseSaved = true;
+  277:                 status("purchaseMessage", `تم حفظ الفاتورة ${result.invoiceNumber}`);
+  278:                 try {
+  279:                     window.elSharqInvoicePrint.print(printWindow, {
+  280:                         type: "purchase",
+  281:                         invoice_number: result.invoiceNumber,
+  282:                         created_at: new Date().toISOString(),
+  283:                         partyName: result.supplierName || "مورد نقدي",
+  284:                         locationName: locations.find((location) => String(location.id) === page.querySelector("#purchaseLocation").value)?.name || "-",
+  285:                         items: items.map((item) => ({ ...item, total: item.quantity * item.unit_cost })),
+  286:                         subtotal: result.subtotal,
+  287:                         discount: result.discount,
+  288:                         total: result.total,
+  289:                         paid: result.paid,
+  290:                         remaining: result.remaining,
+  291:                         notes: page.querySelector("#purchaseNotes").value
+  292:                     });
+  293:                 } catch (printError) {
+  294:                     if (printWindow && !printWindow.closed) printWindow.close();
+  295:                     window.alert(`تم حفظ الفاتورة ${result.invoiceNumber}، لكن تعذرت الطباعة: ${printError?.message || "خطأ غير معروف"}`);
+  296:                 }
+  297:                 try {
+  298:                     await purchases();
+  299:                 } catch (refreshError) {
+  300:                     console.error("Purchase page refresh after save failed:", refreshError);
+  301:                     window.alert(`تم حفظ الفاتورة ${result.invoiceNumber} بنجاح، لكن تعذر تحديث قائمة المشتريات.`);
+  302:                 }
+  303:             } catch (error) {
+  304:                 if (printWindow && !printWindow.closed) printWindow.close();
+  305:                 if (purchaseSaved) {
+  306:                     console.error("Purchase follow-up failed:", error);
+  307:                     window.alert("تم حفظ الفاتورة بنجاح، لكن تعذر تحديث الصفحة.");
+  308:                 } else {
+  309:                     fail("purchaseMessage", error);
+  310:                 }
+  311:                 button.disabled = false;
+  312:             }
+  313:         });
+  314:         page.querySelector("#purchaseHistoryRows").addEventListener("click", async (event) => {
+  315:             const printButton = event.target.closest("[data-print-purchase-id]");
+  316:             if (printButton) {
+  317:                 let printWindow;
+  318:                 try {
+  319:                     printWindow = window.elSharqInvoicePrint.open();
+  320:                     const invoice = await window.elSharq.getPurchaseById(Number(printButton.dataset.printPurchaseId));
+  321:                     window.elSharqInvoicePrint.print(printWindow, {
+  322:                         ...invoice,
+  323:                         type: "purchase",
+  324:                         partyName: invoice.supplier_name || "مورد نقدي",
+  325:                         items: invoice.items
+  326:                     });
+  327:                 } catch (error) {
+  328:                     if (printWindow && !printWindow.closed) printWindow.close();
+  329:                     fail(null, error);
+  330:                     window.alert(error?.message || "تعذرت طباعة فاتورة الشراء");
+  331:                 }
+  332:                 return;
+  333:             }
+  334:             const deleteButton = event.target.closest("[data-delete-purchase-id]");
+  335:             if (deleteButton) {
+  336:                 const invoice = visibleInvoices.find((item) => Number(item.id) === Number(deleteButton.dataset.deletePurchaseId));
+  337:                 if (!invoice || !window.confirm(`سيتم حذف فاتورة الشراء ${invoice.invoice_number}، وخصم كمياتها من المخزون وإلغاء أثر سدادها من الحسابات والخزنة. لا يمكن الحذف إذا كان المخزون الحالي لا يكفي لعكس الكميات. هل تريد المتابعة؟`)) return;
+  338:                 const password = await window.requestDeletionPassword?.();
+  339:                 if (password === null || password === undefined) return;
+  340:                 try {
+  341:                     await window.elSharq.deletePurchase(invoice.id, password);
+  342:                     window.alert("تم حذف فاتورة الشراء وعكس أثرها.");
+  343:                     await purchases();
+  344:                 } catch (error) {
+  345:                     console.error("Purchase deletion error:", error);
+  346:                     window.alert(error?.message || "تعذر حذف فاتورة الشراء");
+  347:                 }
+  348:             }
+  349:         });
+  350:     }
+  351: 
+
+========== PURCHASE DATABASE SCHEMA ==========
+--- السطر 264 ---
+    CREATE TABLE IF NOT EXISTS suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        name TEXT NOT NULL,
+
+        phone TEXT,
+
+        address TEXT,
+
+        opening_balance REAL NOT NULL DEFAULT 0,
+
+        notes TEXT,
+
+        is_active INTEGER NOT NULL DEFAULT 1,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+
+    -- ======================================
+    -- حركة حسابات الموردين
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS supplier_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        supplier_id INTEGER NOT NULL,
+
+        transaction_type TEXT NOT NULL,
+
+        reference_type TEXT,
+
+        reference_id INTEGER,
+
+        debit REAL NOT NULL DEFAULT 0,
+
+        credit REAL NOT NULL DEFAULT 0,
+
+        notes TEXT,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (supplier_id)
+            REFERENCES suppliers(id)
+            ON DELETE RESTRICT
+    );
+
+
+--- السطر 288 ---
+    CREATE TABLE IF NOT EXISTS supplier_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        supplier_id INTEGER NOT NULL,
+
+        transaction_type TEXT NOT NULL,
+
+        reference_type TEXT,
+
+        reference_id INTEGER,
+
+        debit REAL NOT NULL DEFAULT 0,
+
+        credit REAL NOT NULL DEFAULT 0,
+
+        notes TEXT,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (supplier_id)
+            REFERENCES suppliers(id)
+            ON DELETE RESTRICT
+    );
+
+
+    -- ======================================
+    -- فواتير المبيعات
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS sales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        invoice_number TEXT NOT NULL UNIQUE,
+
+        customer_id INTEGER,
+
+        sale_type TEXT NOT NULL DEFAULT 'cash',
+
+        subtotal REAL NOT NULL DEFAULT 0,
+
+        plumbing_discount_percent REAL NOT NULL DEFAULT 0,
+
+        plumbing_discount_amount REAL NOT NULL DEFAULT 0,
+
+        general_discount_amount REAL NOT NULL DEFAULT 0,
+
+        total_amount REAL NOT NULL DEFAULT 0,
+
+        paid_amount REAL NOT NULL DEFAULT 0,
+--- السطر 498 ---
+    CREATE TABLE IF NOT EXISTS purchases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        invoice_number TEXT NOT NULL UNIQUE,
+
+        supplier_id INTEGER,
+
+        purchase_type TEXT NOT NULL DEFAULT 'cash',
+
+        subtotal REAL NOT NULL DEFAULT 0,
+
+        discount_amount REAL NOT NULL DEFAULT 0,
+
+        total_amount REAL NOT NULL DEFAULT 0,
+
+        paid_amount REAL NOT NULL DEFAULT 0,
+
+        remaining_amount REAL NOT NULL DEFAULT 0,
+
+        status TEXT NOT NULL DEFAULT 'completed',
+
+        notes TEXT,
+
+        created_by INTEGER,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (supplier_id)
+            REFERENCES suppliers(id)
+            ON DELETE RESTRICT,
+
+        FOREIGN KEY (created_by)
+            REFERENCES users(id)
+            ON DELETE SET NULL
+    );
+
+
+    -- ======================================
+    -- أصناف فواتير المشتريات
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS purchase_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        purchase_id INTEGER NOT NULL,
+
+        product_id INTEGER NOT NULL,
+
+        location_id INTEGER NOT NULL,
+--- السطر 539 ---
+    CREATE TABLE IF NOT EXISTS purchase_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        purchase_id INTEGER NOT NULL,
+
+        product_id INTEGER NOT NULL,
+
+        location_id INTEGER NOT NULL,
+
+        quantity REAL NOT NULL,
+
+        unit_cost REAL NOT NULL,
+
+        total_amount REAL NOT NULL,
+
+        previous_purchase_price REAL DEFAULT NULL,
+        previous_purchase_price_manual INTEGER DEFAULT NULL,
+
+        FOREIGN KEY (purchase_id)
+            REFERENCES purchases(id)
+            ON DELETE CASCADE,
+
+        FOREIGN KEY (product_id)
+            REFERENCES products(id)
+            ON DELETE RESTRICT,
+
+        FOREIGN KEY (location_id)
+            REFERENCES locations(id)
+            ON DELETE RESTRICT
+    );
+
+
+    -- ======================================
+    -- مدفوعات المشتريات
+    -- ======================================
+
+    CREATE TABLE IF NOT EXISTS purchase_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        purchase_id INTEGER NOT NULL,
+
+        amount REAL NOT NULL,
+
+        payment_method TEXT NOT NULL DEFAULT 'cash',
+
+        notes TEXT,
+
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
