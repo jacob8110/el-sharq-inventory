@@ -17,6 +17,27 @@
 
 ---
 
+## 🖥️ لقطات من النظام
+
+لقطات حقيقية من واجهة التطبيق أثناء تشغيله. قد تختلف بعض التفاصيل والبيانات الظاهرة عن أحدث نسخة؛ لا تتضمن الصور قاعدة البيانات أو معلومات عملاء.
+
+<p align="center">
+  <img src="screenshots/dashboard.png" alt="لوحة التحكم الرئيسية لنظام الشرق" width="900">
+</p>
+<p align="center"><strong>لوحة التحكم</strong></p>
+
+<p align="center">
+  <img src="screenshots/products.png" alt="صفحة إدارة المنتجات في نظام الشرق" width="900">
+</p>
+<p align="center"><strong>إدارة المنتجات</strong></p>
+
+<p align="center">
+  <img src="screenshots/purchases.png" alt="صفحة إدخال فاتورة مشتريات في نظام الشرق" width="900">
+</p>
+<p align="center"><strong>إدخال المشتريات</strong></p>
+
+---
+
 ## 🌟 أبرز المميزات (Key Features)
 
 ### 1. 🔍 محرك بحث واقتراح ذكي فوري (Smart Autocomplete Search)
