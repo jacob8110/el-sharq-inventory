@@ -9,7 +9,7 @@
     "dist": "electron-builder --win nsis --x64"
   },
   "author": "El-Sharq",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "commonjs",
   "devDependencies": {
     "electron": "^44.5.1",
