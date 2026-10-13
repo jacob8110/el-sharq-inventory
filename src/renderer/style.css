@@ -55,7 +55,9 @@ button {
 }
 
 .app {
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
 }
 
@@ -66,7 +68,9 @@ button {
 
 .sidebar {
     width: 250px;
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
 
     background:
         linear-gradient(
@@ -174,7 +178,7 @@ button {
 
     gap: 13px;
 
-    padding: 12px 14px;
+    padding: 8px 12px;
 
     border: 0;
     border-radius: 12px;
@@ -277,7 +281,9 @@ button {
     margin-right: 250px;
 
     min-width: 0;
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
 
     padding: 0 34px 40px;
 }
@@ -2376,7 +2382,7 @@ button {
 
 .set-price-total {
     margin-top: 12px;
-    padding: 12px 14px;
+    padding: 8px 12px;
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.04);
     display: flex;
@@ -4198,7 +4204,7 @@ body {
 
 .stock-location-table th,
 .stock-location-table td {
-    padding: 12px 14px;
+    padding: 8px 12px;
 }
 
 .stock-location-quantity {
@@ -4256,7 +4262,7 @@ body {
 .product-picker-field > input {
     width: 100%;
     min-width: 0;
-    padding: 12px 14px;
+    padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: 10px;
     outline: 0;
@@ -5153,7 +5159,9 @@ body {
 html { background: var(--bg); }
 
 body {
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
     background:
         radial-gradient(ellipse 56% 38% at 88% -12%, rgba(51, 169, 199, .12), transparent 70%),
         radial-gradient(ellipse 40% 33% at 12% 100%, rgba(111, 84, 168, .08), transparent 72%),
