@@ -13,3 +13,11 @@ backups/
 *.exe
 *.msi
 /src/database/data/
+
+*.bak
+*.backup*
+*-inspection.txt
+project_structure.txt
+splash_code.txt
+node_modules/
+

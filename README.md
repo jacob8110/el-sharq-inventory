@@ -1,33 +1,117 @@
-# El-Sharq Inventory Management System
+# 🏢 El-Sharq Inventory & POS System | نظام الشرق لإدارة معارض ومحلات السيراميك والسباكة
 
-A desktop inventory and business management application developed for a sanitary ware and ceramic-tile business.
+<div align="center">
 
-## Overview
+![Electron.js](https://img.shields.io/badge/Electron.js-4.x%2B-47848F?style=for-the-badge&logo=electron&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)
+![SQLite3](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Architecture](https://img.shields.io/badge/Architecture-Offline--First-orange?style=for-the-badge)
+![License](https://img.shields.io/badge/License-Proprietary-blue?style=for-the-badge)
 
-El-Sharq helps manage products, stock, sales, purchases, invoices, and financial records across a showroom and a warehouse. It also supports ceramic-tile products with different selling units, including cartons, square meters, and individual tiles.
+**نظام مكتبي (Desktop ERP / POS) متكامل لإدارة معارض ومخازن السيراميك، الأدوات الصحية، والسباكة في السوق المصري.**  
+مصمم ليعمل بدون إنترنت (Offline-First) بكفاءة وسرعة فائقة مع مراعاة معادلات التسعير التجارية المعقدة.
 
-## Key Features
+[المميزات](#-أبرز-المميزات) • [التقنيات المستخدمة](#-التقنيات-المستخدمة-tech-stack) • [هيكل المشروع](#-هيكل-المشروع) • [التشغيل والتركيب](#-طريقة-التشغيل)
 
-- Manage sanitary ware and ceramic-tile products
-- Track stock in the showroom and warehouse
-- Record purchases and sales
-- Create and print invoices
-- Apply customer discounts separately from supplier discounts
-- Track product costs, selling prices, and business transactions
-- Store application data locally
+</div>
 
-## Built With
+---
 
-- Electron
-- JavaScript
-- SQLite
-- better-sqlite3
-- HTML and CSS
+## 🌟 أبرز المميزات (Key Features)
 
-## Project Status
+### 1. 🔍 محرك بحث واقتراح ذكي فوري (Smart Autocomplete Search)
+- بحث لحظي وسريع جداً بين آلاف الأصناف بالاسم، الكود، المقاس، أو الباركود.
+- تحكم كامل من خلال لوحة المفاتيح (الأسهم للأعلى والأسفل، `Enter` للاختيار الفوري، و`Esc` للإغلاق) لتسريع عمليات البيع في أوقات الذروة.
 
-This project was built as a desktop application for practical business use. Screenshots and setup instructions can be added after preparing sanitized demo data and reviewing the fresh-install process.
+### 2. 🚿 معادلات تسعير السباكة والمشتريات (Plumbing & Ceramic Pricing Engine)
+- **السباكة:** دعم خصم اللستة التجاري (حساب التكلفة آلياً من نسبة خصم المورد مع تحديد سعر البيع القطاعي).
+- **السيراميك والأدوات الصحية:** شراء مباشر وتحديد فوري لسعر البيع ونسب الأرباح.
+- حفظ تاريخ الأسعار والتراجع الآمن عند إلغاء أو تعديل الفواتير.
 
-## Data and Privacy
+### 3. 📦 إدارة المخزون متعدد المواقع وحجز البضاعة (Multi-Location & Reservations)
+- تتبع حركة الأرصدة بدقة بين **المعرض** و**المخزن**.
+- **نظام حجز البضاعة:** إمكانية حجز بضاعة للعميل بعربون وتثبيت سعر الشراء اليوم حتى موعد الاستلام، مع التحقق من الرصيد المتاح بالمخازن وتوزيع الصرف الفعلي عند التسليم.
 
-The repository contains application source code and a product catalog. It does not include the local SQLite database or backup files.
+### 4. 💰 الخزينة، المصروفات، والأرباح (Cash Management & Expenses)
+- إدارة الخزائن النقدية وحركات الإيداع والسحب.
+- صفحة مخصصة لتسجيل المصروفات النثرية واليومية مع ربط الخصم بالخزينة وخصمها من صافي الأرباح في التقارير.
+- كشف حساب تفصيلي للطباعة وتقارير أرباح دقيقة.
+
+### 5. 📑 طباعة الفواتير وكشوف الحساب (Invoicing & Printing)
+- فواتير بيع وشراء مخصصة جاهزة للطباعة الحرارية ومقاس A4/A5.
+- تجميع البنود حسب الأقسام (سباكة، سيراميك، أدوات صحية) مع تفاصيل الخصومات والصافي.
+
+### 6. ⚡ استيراد الكتالوجات الضخمة (Automated Catalog Importer)
+- محرك استيراد وتدقيق آلي تم من خلاله إدخال وفهرسة أكثر من 850 صنفاً من كبرى الشركات المصرية والعالمية (سانيبيور Sanipure، هوايي HUAYE، وراديكس Radix) وتوليد أكواد فريدة وربط أرصدة المخازن آلياً.
+
+---
+
+## 🛠️ التقنيات المستخدمة (Tech Stack)
+
+| المجال | التقنية | الاستخدام |
+| :--- | :--- | :--- |
+| **Runtime** | `Electron.js` | تشغيل التطبيق المكتبي على نظام Windows بأداء خفيف وسريع |
+| **Backend & Engine** | `Node.js` | إدارة العمليات الحسابية والمنطق التجاري (Business Logic) |
+| **Database** | `SQLite` via `better-sqlite3` | قاعدة بيانات محلية سريعة جداً تعمل بنظام Transactions متزامن |
+| **Frontend** | `HTML5`, `CSS3`, `Vanilla JavaScript` | واجهة مستخدم متجاوبة وسلسة بدون استهلاك زائد للذاكرة |
+| **Security & IPC** | `Electron contextBridge` & `preload.js` | عزل آمن بين عمليات الواجهة وقاعدة البيانات |
+
+---
+
+## 📂 هيكل المشروع (Project Architecture)
+
+```text
+El-Sharq/
+├── main.js                   # نقطة انطلاق تطبيق Electron وإدارة النوافذ
+├── src/
+│   ├── preload.js            # جسر الأمان وعرض الـ APIs للواجهة (IPC Bridge)
+│   ├── database/
+│   │   ├── database.js       # إعداد وتهيئة جداول SQLite والـ Migrations
+│   │   ├── operations.js     # العمليات المحاسبية وإدارة المنتجات والفواتير
+│   │   └── data/             # ملف قاعدة البيانات المحلي (el-sharq.db)
+│   └── renderer/
+│       ├── index.html        # الواجهة الرسومية الرئيسية
+│       ├── app.js            # إدارة التنقل وتبديل الشاشات
+│       ├── operations.js     # منطق واجهات البيع، الشراء، والبحث الذكي
+│       ├── invoice-print.js  # محرك تنسيق وطباعة الفواتير
+│       ├── style.css         # التنسيقات والتصميم المرئي
+│       └── assets/           # الشعار والأيقونات والخطوط
+├── import-catalogs.js        # سكربت استيراد وتدقيق كتالوجات الأصناف
+└── package.json              # إعدادات المشروع وحزم Node.js
+```
+
+---
+
+## 🚀 طريقة التشغيل (Getting Started)
+
+### المتطلبات المسبقة:
+- تثبيت [Node.js](https://nodejs.org/) (إصدار 18 أو أحدث).
+
+### خطوات التشغيل:
+```bash
+# 1. استنساخ المشروع
+git clone https://github.com/jacob8110/el-sharq-inventory.git
+
+# 2. الدخول إلى مجلد المشروع
+cd el-sharq-inventory
+
+# 3. تثبيت الاعتماديات
+npm install
+
+# 4. تشغيل التطبيق في وضع التطوير
+npm start
+```
+
+---
+
+## 👨‍💻 المطور (Author)
+
+**يعقوب أشرف (Yacoub Ashraf)**  
+- GitHub: [@jacob8110](https://github.com/jacob8110)  
+- Contact: jacobashraf6@gmail.com
+
+---
+
+<div align="center">
+  <sub>صُنع بشغف لخدمة أصحاب الأعمال في قطاع المقاولات والتجارة في مصر 🇪🇬</sub>
+</div>

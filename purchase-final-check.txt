@@ -1,0 +1,500 @@
+
+========== src\database\operations.js : lines 94-193 ==========
+   94:         purchase.location_name = purchase.items[0]?.location_name || "-";
+   95:         return purchase;
+   96:     });
+   97: 
+   98:     ipcMain.handle("purchases:delete", (_event, purchaseId, password) => {
+   99:         verifyDeletionPassword(db, password);
+  100:         return db.transaction(() => {
+  101:             const id = Number(purchaseId);
+  102:             const purchase = db.prepare("SELECT * FROM purchases WHERE id = ?").get(id);
+  103:             if (!purchase) throw new Error("فاتورة الشراء غير موجودة");
+  104:             if (db.prepare("SELECT 1 FROM purchase_returns WHERE purchase_id = ? LIMIT 1").get(id)) {
+  105:                 throw new Error("لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها");
+  106:             }
+  107: 
+  108:             const items = db.prepare(`
+  109:                 SELECT product_id, location_id, SUM(quantity) AS quantity
+  110:                 FROM purchase_items WHERE purchase_id = ?
+  111:                 GROUP BY product_id, location_id
+  112:             `).all(id);
+  113:             for (const item of items) {
+  114:                 const stock = db.prepare(`
+  115:                     SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?
+  116:                 `).get(item.product_id, item.location_id);
+  117:                 if (!stock || Number(stock.quantity) + 0.000001 < Number(item.quantity)) {
+  118:                     throw new Error("لا يمكن حذف فاتورة الشراء: المخزون الحالي أقل من كميتها");
+  119:                 }
+  120:             }
+  121: 
+  122:             const productItems = db.prepare(`
+  123:                 SELECT product_id, SUM(quantity) AS quantity,
+  124:                     SUM(quantity * unit_cost) AS cost,
+  125:                     MIN(previous_purchase_price) AS previous_purchase_price,
+  126:                     COUNT(previous_purchase_price) AS previous_cost_count,
+  127:                     MIN(previous_purchase_price_manual) AS previous_purchase_price_manual,
+  128:                     COUNT(previous_purchase_price_manual) AS previous_manual_count,
+  129:                     COUNT(*) AS item_count
+  130:                 FROM purchase_items WHERE purchase_id = ?
+  131:                 GROUP BY product_id
+  132:             `).all(id);
+  133:             for (const item of productItems) {
+  134:                 const lastInvoiceMovement = db.prepare(`
+  135:                     SELECT MAX(id) AS id FROM stock_movements
+  136:                     WHERE product_id = ? AND reference_type = 'purchase' AND reference_id = ?
+  137:                 `).get(item.product_id, id)?.id;
+  138:                 if (!lastInvoiceMovement) {
+  139:                     throw new Error("لا يمكن التأكد من أثر فاتورة الشراء على المخزون؛ لم يتم حذفها");
+  140:                 }
+  141:                 if (db.prepare(`
+  142:                     SELECT 1 FROM stock_movements
+  143:                     WHERE product_id = ? AND id > ?
+  144:                     LIMIT 1
+  145:                 `).get(item.product_id, lastInvoiceMovement)) {
+  146:                     throw new Error("لا يمكن حذف الفاتورة بأمان بعد وجود حركة لاحقة لأحد أصنافها");
+  147:                 }
+  148:                 const product = db.prepare(`
+  149:                     SELECT purchase_price, updated_at FROM products WHERE id = ?
+  150:                 `).get(item.product_id);
+  151:                 if (product.updated_at > purchase.created_at) {
+  152:                     throw new Error("تم تعديل بيانات تكلفة أحد الأصناف بعد الفاتورة؛ لا يمكن عكس التكلفة بأمان");
+  153:                 }
+  154:             }
+  155: 
+  156:             for (const item of items) {
+  157:                 db.prepare(`
+  158:                     UPDATE stock SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+  159:                     WHERE product_id = ? AND location_id = ?
+  160:                 `).run(item.quantity, item.product_id, item.location_id);
+  161:                 addStockMovement.run(
+  162:                     item.product_id,
+  163:                     item.location_id,
+  164:                     "adjustment",
+  165:                     -Number(item.quantity),
+  166:                     "purchase_delete",
+  167:                     id,
+  168:                     `حذف فاتورة الشراء ${purchase.invoice_number}`
+  169:                 );
+  170:             }
+  171: 
+  172:             for (const item of productItems) {
+  173:                 let previousCost = Number(item.previous_purchase_price || 0);
+  174:                 let previousManual = item.previous_purchase_price_manual;
+  175:                 if (Number(item.previous_cost_count) !== Number(item.item_count)) {
+  176:                     const currentStock = Number(db.prepare(`
+  177:                         SELECT COALESCE(SUM(quantity), 0) AS quantity FROM stock WHERE product_id = ?
+  178:                     `).get(item.product_id).quantity);
+  179:                     const previousStock = currentStock + Number(item.quantity);
+  180:                     previousCost = currentStock > 0
+  181:                         ? Math.max(0, (
+  182:                             Number(db.prepare("SELECT purchase_price FROM products WHERE id = ?")
+  183:                                 .get(item.product_id).purchase_price) * previousStock - Number(item.cost)
+  184:                         ) / currentStock)
+  185:                         : 0;
+  186:                     previousManual = null;
+  187:                 }
+  188:                 if (Number(item.previous_manual_count) !== Number(item.item_count)) {
+  189:                     previousManual = null;
+  190:                 }
+  191:                 db.prepare(`
+  192:                     UPDATE products SET purchase_price = ?,
+  193:                         purchase_price_manual = COALESCE(?, purchase_price_manual),
+
+========== src\database\operations.js : lines 209-363 ==========
+  209:         })();
+  210:     });
+  211: 
+  212:     ipcMain.handle("purchases:create", (_event, purchase) => {
+  213:         if (!purchase || !Array.isArray(purchase.items) || purchase.items.length === 0) {
+  214:             throw new Error("أضف صنفًا واحدًا على الأقل للفاتورة");
+  215:         }
+  216:         return db.transaction(() => {
+  217:             const location = getLocation(purchase.location_id);
+  218:             if (purchase.supplier_name !== undefined && purchase.supplier_name !== null &&
+  219:                 typeof purchase.supplier_name !== "string") {
+  220:                 throw new Error("اسم المورد غير صحيح");
+  221:             }
+  222:             const supplierNameInput = purchase.supplier_name?.trim().replace(/\s+/gu, " ") || "";
+  223:             let supplierId = purchase.supplier_id ? Number(purchase.supplier_id) : null;
+  224:             if (supplierNameInput) {
+  225:                 const existingSupplier = db.prepare(`
+  226:                     SELECT id, is_active FROM suppliers
+  227:                     WHERE name = ? COLLATE NOCASE
+  228:                     ORDER BY is_active DESC, id
+  229:                     LIMIT 1
+  230:                 `).get(supplierNameInput);
+  231:                 if (existingSupplier) {
+  232:                     supplierId = Number(existingSupplier.id);
+  233:                     if (!Number(existingSupplier.is_active)) {
+  234:                         db.prepare(`
+  235:                             UPDATE suppliers SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+  236:                             WHERE id = ?
+  237:                         `).run(supplierId);
+  238:                     }
+  239:                 } else {
+  240:                     const result = db.prepare(`
+  241:                         INSERT INTO suppliers (name, is_active) VALUES (?, 1)
+  242:                     `).run(supplierNameInput);
+  243:                     supplierId = Number(result.lastInsertRowid);
+  244:                 }
+  245:             }
+  246:             if (supplierId && !db.prepare(
+  247:                 "SELECT id FROM suppliers WHERE id = ? AND is_active = 1"
+  248:             ).get(supplierId)) {
+  249:                 throw new Error("المورد غير موجود أو غير نشط");
+  250:             }
+  251: 
+  252:             const items = purchase.items.map((item) => {
+  253:                 const productId = Number(item.product_id);
+  254:                 const product = db.prepare(`
+  255:                     SELECT id, name, purchase_price, purchase_price_manual FROM products
+  256:                     WHERE id = ? AND is_active = 1
+  257:                 `).get(productId);
+  258:                 if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+  259:                 const quantity = finiteNumber(item.quantity, `كمية ${product.name}`, { min: Number.MIN_VALUE });
+  260:                 const unitCost = finiteNumber(item.unit_cost, `سعر شراء ${product.name}`);
+  261:                 return { product, productId, quantity, unitCost, total: quantity * unitCost };
+  262:             });
+  263: 
+  264:             const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+  265:             const discount = finiteNumber(purchase.discount_amount || 0, "الخصم");
+  266:             if (discount > subtotal) throw new Error("الخصم أكبر من إجمالي الفاتورة");
+  267:             const total = subtotal - discount;
+  268:             const paid = finiteNumber(purchase.paid_amount || 0, "المبلغ المدفوع");
+  269:             if (paid > total) throw new Error("المبلغ المدفوع أكبر من إجمالي الفاتورة");
+  270:             const remaining = total - paid;
+  271:             const nextInvoiceId = db.prepare(
+  272:                 "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM purchases"
+  273:             ).get().nextId;
+  274:             const invoiceNumber = `B-${String(nextInvoiceId).padStart(6, "0")}`;
+  275:             const result = db.prepare(`
+  276:                 INSERT INTO purchases
+  277:                     (invoice_number, supplier_id, purchase_type, subtotal, discount_amount,
+  278:                      total_amount, paid_amount, remaining_amount, notes)
+  279:                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  280:             `).run(
+  281:                 invoiceNumber,
+  282:                 supplierId,
+  283:                 remaining > 0 ? "credit" : "cash",
+  284:                 subtotal,
+  285:                 discount,
+  286:                 total,
+  287:                 paid,
+  288:                 remaining,
+  289:                 purchase.notes?.trim() || null
+  290:             );
+  291:             const purchaseId = Number(result.lastInsertRowid);
+  292: 
+  293:             const insertItem = db.prepare(`
+  294:                 INSERT INTO purchase_items
+  295:                     (purchase_id, product_id, location_id, quantity, unit_cost, total_amount,
+  296:                      previous_purchase_price, previous_purchase_price_manual)
+  297:                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  298:             `);
+  299:             const productTotals = new Map();
+  300:             for (const item of items) {
+  301:                 const productTotal = productTotals.get(item.productId) || {
+  302:                     quantity: 0,
+  303:                     total: 0,
+  304:                     previousCost: Number(item.product.purchase_price)
+  305:                 };
+  306:                 productTotal.quantity += item.quantity;
+  307:                 productTotal.total += item.total;
+  308:                 productTotals.set(item.productId, productTotal);
+  309:                 ensureStockRow.run(item.productId, location.id);
+  310:                 insertItem.run(
+  311:                     purchaseId,
+  312:                     item.productId,
+  313:                     location.id,
+  314:                     item.quantity,
+  315:                     item.unitCost,
+  316:                     item.total,
+  317:                     Number(item.product.purchase_price),
+  318:                     Number(item.product.purchase_price_manual || 0)
+  319:                 );
+  320:                 db.prepare(`
+  321:                     UPDATE stock SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
+  322:                     WHERE product_id = ? AND location_id = ?
+  323:                 `).run(item.quantity, item.productId, location.id);
+  324:                 addStockMovement.run(
+  325:                     item.productId,
+  326:                     location.id,
+  327:                     "purchase",
+  328:                     item.quantity,
+  329:                     "purchase",
+  330:                     purchaseId,
+  331:                     `فاتورة شراء ${invoiceNumber}`
+  332:                 );
+  333:             }
+  334:             const costFactor = subtotal > 0 ? total / subtotal : 1;
+  335:             for (const [productId, productTotal] of productTotals) {
+  336:                 const latestNetCost = productTotal.quantity > 0
+  337:                     ? productTotal.total * costFactor / productTotal.quantity
+  338:                     : productTotal.previousCost;
+  339:                 db.prepare(`
+  340:                     UPDATE products SET purchase_price = ?, purchase_price_manual = 1,
+  341:                         updated_at = CURRENT_TIMESTAMP
+  342:                     WHERE id = ?
+  343:                 `).run(latestNetCost, productId);
+  344:             }
+  345: 
+  346:             if (supplierId) {
+  347:                 db.prepare(`
+  348:                     INSERT INTO supplier_transactions
+  349:                         (supplier_id, transaction_type, reference_type, reference_id, debit, credit, notes)
+  350:                     VALUES (?, 'purchase', 'purchase', ?, 0, ?, ?)
+  351:                 `).run(supplierId, purchaseId, total, `فاتورة شراء ${invoiceNumber}`);
+  352:                 if (paid > 0) {
+  353:                     db.prepare(`
+  354:                         INSERT INTO supplier_transactions
+  355:                             (supplier_id, transaction_type, reference_type, reference_id, debit, credit, notes)
+  356:                         VALUES (?, 'payment', 'purchase', ?, ?, 0, ?)
+  357:                     `).run(supplierId, purchaseId, paid, `دفع على فاتورة ${invoiceNumber}`);
+  358:                 }
+  359:             }
+  360: 
+  361:             if (paid > 0) {
+  362:                 const account = db.prepare(`
+  363:                     SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' AND is_active = 1
+
+========== src\database\database.js : lines 1-115 ==========
+    1: const Database = require("better-sqlite3");
+    2: const { app } = require("electron");
+    3: const path = require("path");
+    4: const fs = require("fs");
+    5: 
+    6: // ==========================================
+    7: // قاعدة بيانات الشرق
+    8: // ==========================================
+    9: 
+   10: const legacyDatabasePath = path.join(__dirname, "data", "el-sharq.db");
+   11: const databaseFolder = app.isPackaged
+   12:     ? path.join(app.getPath("userData"), "data")
+   13:     : path.join(__dirname, "data");
+   14: const databasePath = path.join(databaseFolder, "el-sharq.db");
+   15: 
+   16: function reportStartupProgress(progress, status) {
+   17:     app.emit("el-sharq-startup-progress", { progress, status });
+   18: }
+   19: 
+   20: if (!fs.existsSync(databaseFolder)) {
+   21:     fs.mkdirSync(databaseFolder, { recursive: true });
+   22: }
+   23: 
+   24: if (app.isPackaged && !fs.existsSync(databasePath) && fs.existsSync(legacyDatabasePath)) {
+   25:     fs.writeFileSync(databasePath, fs.readFileSync(legacyDatabasePath));
+   26:     const legacyWalPath = `${legacyDatabasePath}-wal`;
+   27:     if (fs.existsSync(legacyWalPath) && fs.statSync(legacyWalPath).size > 0) {
+   28:         fs.writeFileSync(`${databasePath}-wal`, fs.readFileSync(legacyWalPath));
+   29:     }
+   30: }
+   31: 
+   32: const db = new Database(databasePath);
+   33: reportStartupProgress(32, "جاري تجهيز قاعدة البيانات...");
+   34: 
+   35: // تحسين أداء وأمان SQLite
+   36: db.pragma("journal_mode = WAL");
+   37: db.pragma("foreign_keys = ON");
+   38: reportStartupProgress(38, "جاري فحص قاعدة البيانات...");
+   39: 
+   40: // ==========================================
+   41: // إنشاء الجداول
+   42: // ==========================================
+   43: 
+   44: db.exec(`
+   45: 
+   46:     -- ======================================
+   47:     -- المستخدمين والصلاحيات
+   48:     -- ======================================
+   49: 
+   50:     CREATE TABLE IF NOT EXISTS roles (
+   51:         id INTEGER PRIMARY KEY AUTOINCREMENT,
+   52:         name TEXT NOT NULL UNIQUE,
+   53:         description TEXT,
+   54:         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   55:     );
+   56: 
+   57:     CREATE TABLE IF NOT EXISTS users (
+   58:         id INTEGER PRIMARY KEY AUTOINCREMENT,
+   59:         username TEXT NOT NULL UNIQUE,
+   60:         password_hash TEXT NOT NULL,
+   61:         full_name TEXT NOT NULL,
+   62:         role_id INTEGER,
+   63:         is_active INTEGER NOT NULL DEFAULT 1,
+   64:         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+   65:         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+   66: 
+   67:         FOREIGN KEY (role_id)
+   68:             REFERENCES roles(id)
+   69:             ON DELETE SET NULL
+   70:     );
+   71: 
+   72: 
+   73:     -- ======================================
+   74:     -- التصنيفات
+   75:     -- ======================================
+   76: 
+   77:     CREATE TABLE IF NOT EXISTS categories (
+   78:         id INTEGER PRIMARY KEY AUTOINCREMENT,
+   79:         name TEXT NOT NULL UNIQUE,
+   80:         description TEXT,
+   81:         is_active INTEGER NOT NULL DEFAULT 1,
+   82:         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+   83:         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   84:     );
+   85: 
+   86: 
+   87:     -- ======================================
+   88:     -- المنتجات
+   89:     -- ======================================
+   90: 
+   91:     CREATE TABLE IF NOT EXISTS products (
+   92: 
+   93:     id INTEGER PRIMARY KEY AUTOINCREMENT,
+   94: 
+   95:     internal_code TEXT UNIQUE,
+   96: 
+   97:     barcode TEXT UNIQUE,
+   98: 
+   99:     name TEXT NOT NULL,
+  100: 
+  101:         category_id INTEGER NOT NULL,
+  102: 
+  103:         unit TEXT NOT NULL DEFAULT 'قطعة',
+  104: 
+  105:         purchase_price REAL NOT NULL DEFAULT 0,
+  106:         purchase_price_manual INTEGER NOT NULL DEFAULT 0,
+  107:         sale_price REAL NOT NULL DEFAULT 0,
+  108: 
+  109:         minimum_stock REAL NOT NULL DEFAULT 0,
+  110: 
+  111:         is_active INTEGER NOT NULL DEFAULT 1,
+  112: 
+  113:         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  114:         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  115: 
+
+========== MIGRATION MARKERS: src\database\database.js ==========
+Line 575: CREATE TABLE IF NOT EXISTS purchase_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+    
+            purchase_id INTEGER NOT NULL,
+    
+            amount REAL NOT NULL,
+Line 943: // هجرات غير مدمرة (Safe Migrations)
+    // ==========================================
+    // فكرة الدالة المساعدة: بنشوف العمود موجود ولا لأ
+    function columnExists(tableName, columnName) {
+        const row = db.prepare(`
+            SELECT COUNT(*) AS cnt FROM pragma_table_info(?)
+Line 956: db.exec(`ALTER TABLE products ADD COLUMN tile_length_cm REAL DEFAULT NULL`);
+        console.log("Migration: Added column tile_length_cm to products");
+    }
+    if (!columnExists("products", "tile_width_cm")) {
+        db.exec(`ALTER TABLE products ADD COLUMN tile_width_cm REAL DEFAULT NULL`);
+        console.log("Migration: Added column tile_width_cm to products");
+Line 957: console.log("Migration: Added column tile_length_cm to products");
+    }
+    if (!columnExists("products", "tile_width_cm")) {
+        db.exec(`ALTER TABLE products ADD COLUMN tile_width_cm REAL DEFAULT NULL`);
+        console.log("Migration: Added column tile_width_cm to products");
+    }
+Line 960: db.exec(`ALTER TABLE products ADD COLUMN tile_width_cm REAL DEFAULT NULL`);
+        console.log("Migration: Added column tile_width_cm to products");
+    }
+    if (!columnExists("products", "tiles_per_carton")) {
+        db.exec(`ALTER TABLE products ADD COLUMN tiles_per_carton INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column tiles_per_carton to products");
+Line 961: console.log("Migration: Added column tile_width_cm to products");
+    }
+    if (!columnExists("products", "tiles_per_carton")) {
+        db.exec(`ALTER TABLE products ADD COLUMN tiles_per_carton INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column tiles_per_carton to products");
+    }
+Line 964: db.exec(`ALTER TABLE products ADD COLUMN tiles_per_carton INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column tiles_per_carton to products");
+    }
+    if (!columnExists("products", "company_discount_percent")) {
+        db.exec(`ALTER TABLE products ADD COLUMN company_discount_percent REAL DEFAULT 0`);
+        console.log("Migration: Added column company_discount_percent to products");
+Line 965: console.log("Migration: Added column tiles_per_carton to products");
+    }
+    if (!columnExists("products", "company_discount_percent")) {
+        db.exec(`ALTER TABLE products ADD COLUMN company_discount_percent REAL DEFAULT 0`);
+        console.log("Migration: Added column company_discount_percent to products");
+    }
+Line 968: db.exec(`ALTER TABLE products ADD COLUMN company_discount_percent REAL DEFAULT 0`);
+        console.log("Migration: Added column company_discount_percent to products");
+    }
+    if (!columnExists("products", "purchase_price_manual")) {
+        db.exec(`ALTER TABLE products ADD COLUMN purchase_price_manual INTEGER NOT NULL DEFAULT 0`);
+        console.log("Migration: Added column purchase_price_manual to products");
+Line 969: console.log("Migration: Added column company_discount_percent to products");
+    }
+    if (!columnExists("products", "purchase_price_manual")) {
+        db.exec(`ALTER TABLE products ADD COLUMN purchase_price_manual INTEGER NOT NULL DEFAULT 0`);
+        console.log("Migration: Added column purchase_price_manual to products");
+    }
+Line 972: db.exec(`ALTER TABLE products ADD COLUMN purchase_price_manual INTEGER NOT NULL DEFAULT 0`);
+        console.log("Migration: Added column purchase_price_manual to products");
+    }
+    if (!columnExists("purchase_items", "previous_purchase_price")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price REAL DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price to purchase_items");
+Line 973: console.log("Migration: Added column purchase_price_manual to products");
+    }
+    if (!columnExists("purchase_items", "previous_purchase_price")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price REAL DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price to purchase_items");
+    }
+Line 976: db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price REAL DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price to purchase_items");
+    }
+    if (!columnExists("purchase_items", "previous_purchase_price_manual")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price_manual INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price_manual to purchase_items");
+Line 977: console.log("Migration: Added column previous_purchase_price to purchase_items");
+    }
+    if (!columnExists("purchase_items", "previous_purchase_price_manual")) {
+        db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price_manual INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price_manual to purchase_items");
+    }
+Line 980: db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price_manual INTEGER DEFAULT NULL`);
+        console.log("Migration: Added column previous_purchase_price_manual to purchase_items");
+    }
+    
+    // ---------- جدول sales: إضافة updated_at وخصم التاجر لطلبيه السباكه ----------
+    if (!columnExists("sales", "updated_at")) {
+Line 981: console.log("Migration: Added column previous_purchase_price_manual to purchase_items");
+    }
+    
+    // ---------- جدول sales: إضافة updated_at وخصم التاجر لطلبيه السباكه ----------
+    if (!columnExists("sales", "updated_at")) {
+        db.exec(`ALTER TABLE sales ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
+Line 986: db.exec(`ALTER TABLE sales ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
+        console.log("Migration: Added column updated_at to sales");
+    }
+    if (!columnExists("sales", "trader_discount_percent")) {
+        db.exec(`ALTER TABLE sales ADD COLUMN trader_discount_percent REAL DEFAULT 0`);
+        console.log("Migration: Added column trader_discount_percent to sales");
+Line 987: console.log("Migration: Added column updated_at to sales");
+    }
+    if (!columnExists("sales", "trader_discount_percent")) {
+        db.exec(`ALTER TABLE sales ADD COLUMN trader_discount_percent REAL DEFAULT 0`);
+        console.log("Migration: Added column trader_discount_percent to sales");
+    }
+
+========== MIGRATION MARKERS: main.js ==========
+Line 117: const migrateRedexProductCodes = db.transaction(() => {
+            const redexProducts = db.prepare(`
+            SELECT id, name, internal_code
+            FROM products
+            WHERE lower(name) LIKE '%redex%' OR name LIKE '%ريدكس%'
+        `).all();
+Line 138: migrateRedexProductCodes();
+    
+    
+        // =========================
+        // GET LOCATIONS
+        // =========================

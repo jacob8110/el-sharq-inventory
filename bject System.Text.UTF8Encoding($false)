@@ -1,0 +1,3291 @@
+warning: in the working copy of 'main.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/main.js b/main.js[m
+[1mindex 5180fc3..d2e729b 100644[m
+[1m--- a/main.js[m
+[1m+++ b/main.js[m
+[36m@@ -77,82 +77,82 @@[m [mfunction initializeBackend() {[m
+     registerOperations(ipcMain, db);[m
+ [m
+     ipcMain.handle("database:backup", async () => {[m
+[31m-    const stamp = new Date().toISOString().slice(0, 10);[m
+[31m-    const result = await dialog.showSaveDialog({[m
+[31m-        title: "حفظ نسخة احتياطية من قاعدة بيانات الشرق",[m
+[31m-        defaultPath: `el-sharq-backup-${stamp}.db`,[m
+[31m-        filters: [{ name: "SQLite database", extensions: ["db"] }][m
+[32m+[m[32m        const stamp = new Date().toISOString().slice(0, 10);[m
+[32m+[m[32m        const result = await dialog.showSaveDialog({[m
+[32m+[m[32m            title: "حفظ نسخة احتياطية من قاعدة بيانات الشرق",[m
+[32m+[m[32m            defaultPath: `el-sharq-backup-${stamp}.db`,[m
+[32m+[m[32m            filters: [{ name: "SQLite database", extensions: ["db"] }][m
+[32m+[m[32m        });[m
+[32m+[m[32m        if (result.canceled) return { success: false, canceled: true };[m
+[32m+[m[32m        if (!result.filePath) throw new Error("لم يتم تحديد مكان حفظ النسخة الاحتياطية");[m
+[32m+[m[32m        await db.backup(result.filePath);[m
+[32m+[m[32m        return { success: true, filePath: result.filePath };[m
+     });[m
+[31m-    if (result.canceled) return { success: false, canceled: true };[m
+[31m-    if (!result.filePath) throw new Error("لم يتم تحديد مكان حفظ النسخة الاحتياطية");[m
+[31m-    await db.backup(result.filePath);[m
+[31m-    return { success: true, filePath: result.filePath };[m
+[31m-});[m
+ [m
+[31m-function nonNegativeNumber(value, label) {[m
+[31m-    const number = Number(value ?? 0);[m
+[31m-    if (!Number.isFinite(number) || number < 0) {[m
+[31m-        throw new Error(`${label} غير صحيح`);[m
+[32m+[m[32m    function nonNegativeNumber(value, label) {[m
+[32m+[m[32m        const number = Number(value ?? 0);[m
+[32m+[m[32m        if (!Number.isFinite(number) || number < 0) {[m
+[32m+[m[32m            throw new Error(`${label} غير صحيح`);[m
+[32m+[m[32m        }[m
+[32m+[m[32m        return number;[m
+     }[m
+[31m-    return number;[m
+[31m-}[m
+ [m
+[31m-function isPlumbingPipe(name, categoryName) {[m
+[31m-    return categoryName === "سباكة" && /^مواسير(?:\s|$)/u.test(String(name || "").trim());[m
+[31m-}[m
+[32m+[m[32m    function isPlumbingPipe(name, categoryName) {[m
+[32m+[m[32m        return categoryName === "سباكة" && /^مواسير(?:\s|$)/u.test(String(name || "").trim());[m
+[32m+[m[32m    }[m
+ [m
+[31m-function isRedexProduct(name) {[m
+[31m-    return /ريدكس|redex/iu.test(String(name || ""));[m
+[31m-}[m
+[32m+[m[32m    function isRedexProduct(name) {[m
+[32m+[m[32m        return /ريدكس|redex/iu.test(String(name || ""));[m
+[32m+[m[32m    }[m
+ [m
+[31m-function normalizeRedexProductCode(name, code) {[m
+[31m-    const normalizedCode = String(code || "").trim();[m
+[31m-    if (!isRedexProduct(name)) {[m
+[31m-        return normalizedCode;[m
+[32m+[m[32m    function normalizeRedexProductCode(name, code) {[m
+[32m+[m[32m        const normalizedCode = String(code || "").trim();[m
+[32m+[m[32m        if (!isRedexProduct(name)) {[m
+[32m+[m[32m            return normalizedCode;[m
+[32m+[m[32m        }[m
+[32m+[m[32m        if (/^RD(?:-|$)/i.test(normalizedCode)) return `RD${normalizedCode.slice(2)}`;[m
+[32m+[m[32m        return `RD-${normalizedCode}`;[m
+     }[m
+[31m-    if (/^RD(?:-|$)/i.test(normalizedCode)) return `RD${normalizedCode.slice(2)}`;[m
+[31m-    return `RD-${normalizedCode}`;[m
+[31m-}[m
+ [m
+[31m-const migrateRedexProductCodes = db.transaction(() => {[m
+[31m-    const redexProducts = db.prepare(`[m
+[32m+[m[32m    const migrateRedexProductCodes = db.transaction(() => {[m
+[32m+[m[32m        const redexProducts = db.prepare(`[m
+         SELECT id, name, internal_code[m
+         FROM products[m
+         WHERE lower(name) LIKE '%redex%' OR name LIKE '%ريدكس%'[m
+     `).all();[m
+[31m-    const updateCode = db.prepare("UPDATE products SET internal_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");[m
+[31m-    const findDuplicate = db.prepare("SELECT id FROM products WHERE internal_code = ? AND id != ?");[m
+[32m+[m[32m        const updateCode = db.prepare("UPDATE products SET internal_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");[m
+[32m+[m[32m        const findDuplicate = db.prepare("SELECT id FROM products WHERE internal_code = ? AND id != ?");[m
+ [m
+[31m-    for (const product of redexProducts) {[m
+[31m-        const baseCode = normalizeRedexProductCode(product.name, product.internal_code);[m
+[31m-        if (baseCode === product.internal_code) continue;[m
+[32m+[m[32m        for (const product of redexProducts) {[m
+[32m+[m[32m            const baseCode = normalizeRedexProductCode(product.name, product.internal_code);[m
+[32m+[m[32m            if (baseCode === product.internal_code) continue;[m
+ [m
+[31m-        let code = baseCode;[m
+[31m-        let suffix = 1;[m
+[31m-        while (findDuplicate.get(code, product.id)) {[m
+[31m-            code = `${baseCode}-${suffix++}`;[m
+[32m+[m[32m            let code = baseCode;[m
+[32m+[m[32m            let suffix = 1;[m
+[32m+[m[32m            while (findDuplicate.get(code, product.id)) {[m
+[32m+[m[32m                code = `${baseCode}-${suffix++}`;[m
+[32m+[m[32m            }[m
+[32m+[m[32m            updateCode.run(code, product.id);[m
+         }[m
+[31m-        updateCode.run(code, product.id);[m
+[31m-    }[m
+[31m-});[m
+[31m-migrateRedexProductCodes();[m
+[32m+[m[32m    });[m
+[32m+[m[32m    migrateRedexProductCodes();[m
+ [m
+ [m
+[31m-// =========================[m
+[31m-// GET LOCATIONS[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // GET LOCATIONS[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("locations:getAll", () => {[m
+[31m-    return db.prepare(`SELECT id, name, type FROM locations WHERE is_active = 1 ORDER BY name`).all();[m
+[31m-});[m
+[32m+[m[32m    ipcMain.handle("locations:getAll", () => {[m
+[32m+[m[32m        return db.prepare(`SELECT id, name, type FROM locations WHERE is_active = 1 ORDER BY name`).all();[m
+[32m+[m[32m    });[m
+ [m
+[31m-// =========================[m
+[31m-// GET PRODUCTS[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // GET PRODUCTS[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("products:getAll", () => {[m
+[32m+[m[32m    ipcMain.handle("products:getAll", () => {[m
+ [m
+[31m-    const products = db.prepare(`[m
+[32m+[m[32m        const products = db.prepare(`[m
+         SELECT[m
+             p.id,[m
+             p.name,[m
+[36m@@ -176,63 +176,63 @@[m [mipcMain.handle("products:getAll", () => {[m
+         ORDER BY p.id DESC[m
+     `).all();[m
+ [m
+[31m-    // ضم المخزون[m
+[31m-    for (const p of products) {[m
+[31m-        const stockRows = db.prepare(`[m
+[32m+[m[32m        // ضم المخزون[m
+[32m+[m[32m        for (const p of products) {[m
+[32m+[m[32m            const stockRows = db.prepare(`[m
+             SELECT l.name AS loc_name, s.quantity[m
+             FROM stock s[m
+             JOIN locations l ON l.id = s.location_id[m
+             WHERE s.product_id = ?[m
+         `).all(p.id);[m
+[31m-        p.stock = stockRows;[m
+[31m-        for (const s of stockRows) {[m
+[31m-            if (s.loc_name === "المعرض") p.showroom_quantity = s.quantity;[m
+[31m-            if (s.loc_name === "المخزن") p.warehouse_quantity = s.quantity;[m
+[32m+[m[32m            p.stock = stockRows;[m
+[32m+[m[32m            for (const s of stockRows) {[m
+[32m+[m[32m                if (s.loc_name === "المعرض") p.showroom_quantity = s.quantity;[m
+[32m+[m[32m                if (s.loc_name === "المخزن") p.warehouse_quantity = s.quantity;[m
+[32m+[m[32m            }[m
+         }[m
+[31m-    }[m
+ [m
+[31m-    return products;[m
+[32m+[m[32m        return products;[m
+ [m
+[31m-});[m
+[32m+[m[32m    });[m
+ [m
+[31m-ipcMain.handle("products:delete", (_event, productId, password) => {[m
+[31m-    verifyDeletionPassword(db, password);[m
+[31m-    return db.transaction(() => {[m
+[31m-        const id = Number(productId);[m
+[31m-        const product = db.prepare("SELECT id, name FROM products WHERE id = ?").get(id);[m
+[31m-        if (!product) throw new Error("الصنف غير موجود");[m
+[31m-[m
+[31m-        const references = [[m
+[31m-            ["sale_items", "product_id"],[m
+[31m-            ["purchase_items", "product_id"],[m
+[31m-            ["sales_return_items", "product_id"],[m
+[31m-            ["purchase_return_items", "product_id"],[m
+[31m-            ["stock_movements", "product_id"],[m
+[31m-            ["product_set_items", "product_id"][m
+[31m-        ];[m
+[31m-        const hasHistory = references.some(([table, column]) =>[m
+[31m-            db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id)[m
+[31m-        );[m
+[31m-        if (hasHistory) {[m
+[31m-            db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("products:delete", (_event, productId, password) => {[m
+[32m+[m[32m        verifyDeletionPassword(db, password);[m
+[32m+[m[32m        return db.transaction(() => {[m
+[32m+[m[32m            const id = Number(productId);[m
+[32m+[m[32m            const product = db.prepare("SELECT id, name FROM products WHERE id = ?").get(id);[m
+[32m+[m[32m            if (!product) throw new Error("الصنف غير موجود");[m
+[32m+[m
+[32m+[m[32m            const references = [[m
+[32m+[m[32m                ["sale_items", "product_id"],[m
+[32m+[m[32m                ["purchase_items", "product_id"],[m
+[32m+[m[32m                ["sales_return_items", "product_id"],[m
+[32m+[m[32m                ["purchase_return_items", "product_id"],[m
+[32m+[m[32m                ["stock_movements", "product_id"],[m
+[32m+[m[32m                ["product_set_items", "product_id"][m
+[32m+[m[32m            ];[m
+[32m+[m[32m            const hasHistory = references.some(([table, column]) =>[m
+[32m+[m[32m                db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id)[m
+[32m+[m[32m            );[m
+[32m+[m[32m            if (hasHistory) {[m
+[32m+[m[32m                db.prepare(`[m
+                 UPDATE products SET is_active = 0, updated_at = CURRENT_TIMESTAMP[m
+                 WHERE id = ?[m
+             `).run(id);[m
+[31m-            return { success: true, archived: true, name: product.name };[m
+[31m-        }[m
+[32m+[m[32m                return { success: true, archived: true, name: product.name };[m
+[32m+[m[32m            }[m
+ [m
+[31m-        db.prepare("DELETE FROM stock WHERE product_id = ?").run(id);[m
+[31m-        db.prepare("DELETE FROM products WHERE id = ?").run(id);[m
+[31m-        return { success: true, archived: false, name: product.name };[m
+[31m-    })();[m
+[31m-});[m
+[32m+[m[32m            db.prepare("DELETE FROM stock WHERE product_id = ?").run(id);[m
+[32m+[m[32m            db.prepare("DELETE FROM products WHERE id = ?").run(id);[m
+[32m+[m[32m            return { success: true, archived: false, name: product.name };[m
+[32m+[m[32m        })();[m
+[32m+[m[32m    });[m
+ [m
+[31m-// =========================[m
+[31m-// GET PRODUCT BY ID[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // GET PRODUCT BY ID[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("products:getById", (_e, id) => {[m
+[31m-    const p = db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("products:getById", (_e, id) => {[m
+[32m+[m[32m        const p = db.prepare(`[m
+         SELECT[m
+             p.id,[m
+             p.name,[m
+[36m@@ -255,31 +255,31 @@[m [mipcMain.handle("products:getById", (_e, id) => {[m
+         WHERE p.id = ?[m
+     `).get(Number(id));[m
+ [m
+[31m-    if (!p) return null;[m
+[32m+[m[32m        if (!p) return null;[m
+ [m
+[31m-    const stockRows = db.prepare(`[m
+[32m+[m[32m        const stockRows = db.prepare(`[m
+         SELECT l.name AS loc_name, s.quantity[m
+         FROM stock s[m
+         JOIN locations l ON l.id = s.location_id[m
+         WHERE s.product_id = ?[m
+     `).all(p.id);[m
+[31m-    p.stock = stockRows;[m
+[31m-    for (const s of stockRows) {[m
+[31m-        if (s.loc_name === "المعرض") p.showroom_quantity = s.quantity;[m
+[31m-        if (s.loc_name === "المخزن") p.warehouse_quantity = s.quantity;[m
+[31m-    }[m
+[32m+[m[32m        p.stock = stockRows;[m
+[32m+[m[32m        for (const s of stockRows) {[m
+[32m+[m[32m            if (s.loc_name === "المعرض") p.showroom_quantity = s.quantity;[m
+[32m+[m[32m            if (s.loc_name === "المخزن") p.warehouse_quantity = s.quantity;[m
+[32m+[m[32m        }[m
+ [m
+[31m-    return p;[m
+[31m-});[m
+[32m+[m[32m        return p;[m
+[32m+[m[32m    });[m
+ [m
+ [m
+[31m-// =========================[m
+[31m-// GET CATEGORIES[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // GET CATEGORIES[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("categories:getAll", () => {[m
+[32m+[m[32m    ipcMain.handle("categories:getAll", () => {[m
+ [m
+[31m-    return db.prepare(`[m
+[32m+[m[32m        return db.prepare(`[m
+         SELECT[m
+             id,[m
+             name[m
+[36m@@ -287,91 +287,91 @@[m [mipcMain.handle("categories:getAll", () => {[m
+         ORDER BY name[m
+     `).all();[m
+ [m
+[31m-});[m
+[32m+[m[32m    });[m
+ [m
+ [m
+[31m-// =========================[m
+[31m-// ADD PRODUCT[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // ADD PRODUCT[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("products:add", (event, product) => {[m
+[32m+[m[32m    ipcMain.handle("products:add", (event, product) => {[m
+ [m
+[31m-    const transaction = db.transaction(() => {[m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+ [m
+[31m-        if (!product.name || !product.name.trim()) {[m
+[31m-            throw new Error("اسم المنتج مطلوب");[m
+[31m-        }[m
+[31m-        if (!product.internal_code || !product.internal_code.trim()) {[m
+[31m-            throw new Error("كود المنتج مطلوب");[m
+[31m-        }[m
+[31m-        const internalCode = normalizeRedexProductCode(product.name, product.internal_code);[m
+[31m-        const barcode = product.barcode?.trim() || null;[m
+[32m+[m[32m            if (!product.name || !product.name.trim()) {[m
+[32m+[m[32m                throw new Error("اسم المنتج مطلوب");[m
+[32m+[m[32m            }[m
+[32m+[m[32m            if (!product.internal_code || !product.internal_code.trim()) {[m
+[32m+[m[32m                throw new Error("كود المنتج مطلوب");[m
+[32m+[m[32m            }[m
+[32m+[m[32m            const internalCode = normalizeRedexProductCode(product.name, product.internal_code);[m
+[32m+[m[32m            const barcode = product.barcode?.trim() || null;[m
+ [m
+[31m-        const categoryId = Number(product.category_id);[m
+[31m-        if (!Number.isInteger(categoryId) || categoryId <= 0) {[m
+[31m-            throw new Error("القسم مطلوب");[m
+[31m-        }[m
+[32m+[m[32m            const categoryId = Number(product.category_id);[m
+[32m+[m[32m            if (!Number.isInteger(categoryId) || categoryId <= 0) {[m
+[32m+[m[32m                throw new Error("القسم مطلوب");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // احسب اسم القسم عشان نطبق منطق السباكه[m
+[31m-        const categoryRow = db.prepare([m
+[31m-            "SELECT name FROM categories WHERE id = ? AND is_active = 1"[m
+[31m-        ).get(categoryId);[m
+[31m-        if (!categoryRow) throw new Error("القسم غير موجود أو غير نشط");[m
+[31m-        const categoryName = categoryRow.name;[m
+[31m-        const unit = isPlumbingPipe(product.name, categoryName) ? "متر" : (product.unit || "قطعة");[m
+[31m-[m
+[31m-        const salePrice = nonNegativeNumber(product.sale_price, "سعر البيع");[m
+[31m-[m
+[31m-        // خصم الشركة للسباكه[m
+[31m-        let companyDiscountPercent = 0;[m
+[31m-        if (categoryName === "سباكة") {[m
+[31m-            companyDiscountPercent = Math.max(0, Math.min(100, nonNegativeNumber(product.company_discount_percent, "خصم الشركة")));[m
+[31m-        } else {[m
+[31m-            companyDiscountPercent = nonNegativeNumber(product.company_discount_percent, "خصم الشركة");[m
+[31m-        }[m
+[32m+[m[32m            // احسب اسم القسم عشان نطبق منطق السباكه[m
+[32m+[m[32m            const categoryRow = db.prepare([m
+[32m+[m[32m                "SELECT name FROM categories WHERE id = ? AND is_active = 1"[m
+[32m+[m[32m            ).get(categoryId);[m
+[32m+[m[32m            if (!categoryRow) throw new Error("القسم غير موجود أو غير نشط");[m
+[32m+[m[32m            const categoryName = categoryRow.name;[m
+[32m+[m[32m            const unit = isPlumbingPipe(product.name, categoryName) ? "متر" : (product.unit || "قطعة");[m
+ [m
+[31m-        // سعر الشراء: إما المُدخل أو المحسوب تلقائي للسباكه[m
+[31m-        let purchasePrice = nonNegativeNumber(product.purchase_price, "سعر الشراء");[m
+[31m-        if (categoryName === "سباكة" && !product.purchase_price_manual) {[m
+[31m-            purchasePrice = salePrice * (1 - companyDiscountPercent / 100);[m
+[31m-        }[m
+[31m-        const purchasePriceManual = product.purchase_price_manual ? 1 : 0;[m
+[31m-        const minStock = nonNegativeNumber(product.min_stock ?? product.minimum_stock, "الحد الأدنى للمخزون");[m
+[31m-        const showroomQty = nonNegativeNumber(product.showroom_quantity, "كمية المعرض");[m
+[31m-        const warehouseQty = nonNegativeNumber(product.warehouse_quantity, "كمية المخزن");[m
+[31m-[m
+[31m-        // سيراميك[m
+[31m-        let tileLengthCm = product.tile_length_cm ? nonNegativeNumber(product.tile_length_cm, "طول البلاطة") : null;[m
+[31m-        let tileWidthCm = product.tile_width_cm ? nonNegativeNumber(product.tile_width_cm, "عرض البلاطة") : null;[m
+[31m-        let tilesPerCarton = product.tiles_per_carton ? nonNegativeNumber(product.tiles_per_carton, "عدد البلاطات") : null;[m
+[31m-        if (categoryName !== "سيراميك") {[m
+[31m-            tileLengthCm = null;[m
+[31m-            tileWidthCm = null;[m
+[31m-            tilesPerCarton = null;[m
+[31m-        }[m
+[32m+[m[32m            const salePrice = nonNegativeNumber(product.sale_price, "سعر البيع");[m
+[32m+[m
+[32m+[m[32m            // خصم الشركة للسباكه[m
+[32m+[m[32m            let companyDiscountPercent = 0;[m
+[32m+[m[32m            if (categoryName === "سباكة") {[m
+[32m+[m[32m                companyDiscountPercent = Math.max(0, Math.min(100, nonNegativeNumber(product.company_discount_percent, "خصم الشركة")));[m
+[32m+[m[32m            } else {[m
+[32m+[m[32m                companyDiscountPercent = nonNegativeNumber(product.company_discount_percent, "خصم الشركة");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // =========================[m
+[31m-        // CHECK DUPLICATE CODE[m
+[31m-        // =========================[m
+[32m+[m[32m            // سعر الشراء: إما المُدخل أو المحسوب تلقائي للسباكه[m
+[32m+[m[32m            let purchasePrice = nonNegativeNumber(product.purchase_price, "سعر الشراء");[m
+[32m+[m[32m            if (categoryName === "سباكة" && !product.purchase_price_manual) {[m
+[32m+[m[32m                purchasePrice = salePrice * (1 - companyDiscountPercent / 100);[m
+[32m+[m[32m            }[m
+[32m+[m[32m            const purchasePriceManual = product.purchase_price_manual ? 1 : 0;[m
+[32m+[m[32m            const minStock = nonNegativeNumber(product.min_stock ?? product.minimum_stock, "الحد الأدنى للمخزون");[m
+[32m+[m[32m            const showroomQty = nonNegativeNumber(product.showroom_quantity, "كمية المعرض");[m
+[32m+[m[32m            const warehouseQty = nonNegativeNumber(product.warehouse_quantity, "كمية المخزن");[m
+[32m+[m
+[32m+[m[32m            // سيراميك[m
+[32m+[m[32m            let tileLengthCm = product.tile_length_cm ? nonNegativeNumber(product.tile_length_cm, "طول البلاطة") : null;[m
+[32m+[m[32m            let tileWidthCm = product.tile_width_cm ? nonNegativeNumber(product.tile_width_cm, "عرض البلاطة") : null;[m
+[32m+[m[32m            let tilesPerCarton = product.tiles_per_carton ? nonNegativeNumber(product.tiles_per_carton, "عدد البلاطات") : null;[m
+[32m+[m[32m            if (categoryName !== "سيراميك") {[m
+[32m+[m[32m                tileLengthCm = null;[m
+[32m+[m[32m                tileWidthCm = null;[m
+[32m+[m[32m                tilesPerCarton = null;[m
+[32m+[m[32m            }[m
+ [m
+[31m-        const existing =[m
+[31m-            db.prepare(`SELECT id FROM products WHERE internal_code = ?`).get([m
+[31m-                internalCode[m
+[31m-            );[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // CHECK DUPLICATE CODE[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        if (existing) {[m
+[31m-            throw new Error("كود المنتج مستخدم بالفعل");[m
+[31m-        }[m
+[31m-        if (barcode && db.prepare("SELECT id FROM products WHERE barcode = ?").get(barcode)) {[m
+[31m-            throw new Error("الباركود مستخدم بالفعل");[m
+[31m-        }[m
+[32m+[m[32m            const existing =[m
+[32m+[m[32m                db.prepare(`SELECT id FROM products WHERE internal_code = ?`).get([m
+[32m+[m[32m                    internalCode[m
+[32m+[m[32m                );[m
+ [m
+[31m-        // =========================[m
+[31m-        // INSERT PRODUCT[m
+[31m-        // =========================[m
+[32m+[m[32m            if (existing) {[m
+[32m+[m[32m                throw new Error("كود المنتج مستخدم بالفعل");[m
+[32m+[m[32m            }[m
+[32m+[m[32m            if (barcode && db.prepare("SELECT id FROM products WHERE barcode = ?").get(barcode)) {[m
+[32m+[m[32m                throw new Error("الباركود مستخدم بالفعل");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        const result =[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // INSERT PRODUCT[m
+[32m+[m[32m            // =========================[m
+[32m+[m
+[32m+[m[32m            const result =[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO products ([m
+                     internal_code,[m
+                     barcode,[m
+[36m@@ -390,30 +390,30 @@[m [mipcMain.handle("products:add", (event, product) => {[m
+                 )[m
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)[m
+             `).run([m
+[31m-                internalCode,[m
+[31m-                barcode,[m
+[31m-                product.name.trim(),[m
+[31m-                categoryId,[m
+[31m-                unit,[m
+[31m-                purchasePrice,[m
+[31m-                salePrice,[m
+[31m-                minStock,[m
+[31m-                tileLengthCm,[m
+[31m-                tileWidthCm,[m
+[31m-                tilesPerCarton,[m
+[31m-                companyDiscountPercent,[m
+[31m-                purchasePriceManual[m
+[31m-            );[m
+[32m+[m[32m                    internalCode,[m
+[32m+[m[32m                    barcode,[m
+[32m+[m[32m                    product.name.trim(),[m
+[32m+[m[32m                    categoryId,[m
+[32m+[m[32m                    unit,[m
+[32m+[m[32m                    purchasePrice,[m
+[32m+[m[32m                    salePrice,[m
+[32m+[m[32m                    minStock,[m
+[32m+[m[32m                    tileLengthCm,[m
+[32m+[m[32m                    tileWidthCm,[m
+[32m+[m[32m                    tilesPerCarton,[m
+[32m+[m[32m                    companyDiscountPercent,[m
+[32m+[m[32m                    purchasePriceManual[m
+[32m+[m[32m                );[m
+ [m
+[31m-        const productId = result.lastInsertRowid;[m
+[32m+[m[32m            const productId = result.lastInsertRowid;[m
+ [m
+ [m
+[31m-        // =========================[m
+[31m-        // GET LOCATIONS[m
+[31m-        // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // GET LOCATIONS[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        const locations =[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            const locations =[m
+[32m+[m[32m                db.prepare(`[m
+                 SELECT[m
+                     id,[m
+                     name[m
+[36m@@ -422,12 +422,12 @@[m [mipcMain.handle("products:add", (event, product) => {[m
+             `).all();[m
+ [m
+ [m
+[31m-        // =========================[m
+[31m-        // INSERT INITIAL STOCK[m
+[31m-        // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // INSERT INITIAL STOCK[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        const insertStock =[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            const insertStock =[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO stock ([m
+                     product_id,[m
+                     location_id,[m
+[36m@@ -437,124 +437,124 @@[m [mipcMain.handle("products:add", (event, product) => {[m
+             `);[m
+ [m
+ [m
+[31m-        for (const location of locations) {[m
+[32m+[m[32m            for (const location of locations) {[m
+ [m
+[31m-            let quantity = 0;[m
+[32m+[m[32m                let quantity = 0;[m
+ [m
+ [m
+[31m-            if (location.name === "المعرض") {[m
+[32m+[m[32m                if (location.name === "المعرض") {[m
+ [m
+[31m-                quantity =[m
+[31m-                    showroomQty;[m
+[32m+[m[32m                    quantity =[m
+[32m+[m[32m                        showroomQty;[m
+ [m
+[31m-            }[m
+[32m+[m[32m                }[m
+ [m
+ [m
+[31m-            if (location.name === "المخزن") {[m
+[32m+[m[32m                if (location.name === "المخزن") {[m
+ [m
+[31m-                quantity =[m
+[31m-                    warehouseQty;[m
+[32m+[m[32m                    quantity =[m
+[32m+[m[32m                        warehouseQty;[m
+ [m
+[31m-            }[m
+[32m+[m[32m                }[m
+ [m
+ [m
+[31m-            insertStock.run([m
+[31m-                productId,[m
+[31m-                location.id,[m
+[31m-                quantity[m
+[31m-            );[m
+[31m-            if (quantity > 0) {[m
+[31m-                db.prepare(`[m
+[32m+[m[32m                insertStock.run([m
+[32m+[m[32m                    productId,[m
+[32m+[m[32m                    location.id,[m
+[32m+[m[32m                    quantity[m
+[32m+[m[32m                );[m
+[32m+[m[32m                if (quantity > 0) {[m
+[32m+[m[32m                    db.prepare(`[m
+                     INSERT INTO stock_movements[m
+                         (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)[m
+                     VALUES (?, ?, 'adjustment', ?, 'product', ?, 'رصيد افتتاحي')[m
+                 `).run(productId, location.id, quantity, productId);[m
+[32m+[m[32m                }[m
+[32m+[m
+             }[m
+ [m
+[31m-        }[m
+ [m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // RESULT[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        // =========================[m
+[31m-        // RESULT[m
+[31m-        // =========================[m
+[32m+[m[32m            return {[m
+[32m+[m[32m                success: true,[m
+[32m+[m[32m                productId[m
+[32m+[m[32m            };[m
+ [m
+[31m-        return {[m
+[31m-            success: true,[m
+[31m-            productId[m
+[31m-        };[m
+[32m+[m[32m        });[m
+[32m+[m
+[32m+[m[32m        return transaction();[m
+ [m
+     });[m
+ [m
+[31m-    return transaction();[m
+ [m
+[31m-});[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // UPDATE PRODUCT[m
+[32m+[m[32m    // =========================[m
+ [m
+[32m+[m[32m    ipcMain.handle("products:update", (e, id, product) => {[m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+[32m+[m[32m            id = Number(id);[m
+[32m+[m[32m            const existing = db.prepare("SELECT * FROM products WHERE id = ?").get(id);[m
+[32m+[m[32m            if (!existing) throw new Error("المنتج غير موجود");[m
+ [m
+[31m-// =========================[m
+[31m-// UPDATE PRODUCT[m
+[31m-// =========================[m
+[32m+[m[32m            if (!product.name || !product.name.trim()) throw new Error("اسم المنتج مطلوب");[m
+[32m+[m[32m            if (!product.internal_code || !product.internal_code.trim()) throw new Error("كود المنتج مطلوب");[m
+[32m+[m[32m            const internalCode = normalizeRedexProductCode(product.name, product.internal_code);[m
+[32m+[m[32m            const barcode = product.barcode?.trim() || null;[m
+ [m
+[31m-ipcMain.handle("products:update", (e, id, product) => {[m
+[31m-    const transaction = db.transaction(() => {[m
+[31m-        id = Number(id);[m
+[31m-        const existing = db.prepare("SELECT * FROM products WHERE id = ?").get(id);[m
+[31m-        if (!existing) throw new Error("المنتج غير موجود");[m
+[31m-[m
+[31m-        if (!product.name || !product.name.trim()) throw new Error("اسم المنتج مطلوب");[m
+[31m-        if (!product.internal_code || !product.internal_code.trim()) throw new Error("كود المنتج مطلوب");[m
+[31m-        const internalCode = normalizeRedexProductCode(product.name, product.internal_code);[m
+[31m-        const barcode = product.barcode?.trim() || null;[m
+[31m-[m
+[31m-        const categoryId = Number(product.category_id);[m
+[31m-        if (!Number.isInteger(categoryId) || categoryId <= 0) throw new Error("القسم مطلوب");[m
+[31m-[m
+[31m-        const categoryRow = db.prepare([m
+[31m-            "SELECT name FROM categories WHERE id = ? AND is_active = 1"[m
+[31m-        ).get(categoryId);[m
+[31m-        if (!categoryRow) throw new Error("القسم غير موجود أو غير نشط");[m
+[31m-        const categoryName = categoryRow.name;[m
+[31m-        const unit = isPlumbingPipe(product.name, categoryName) ? "متر" : (product.unit || "قطعة");[m
+[31m-[m
+[31m-        const salePrice = nonNegativeNumber(product.sale_price, "سعر البيع");[m
+[31m-[m
+[31m-        // خصم الشركة للسباكه[m
+[31m-        let companyDiscountPercent = 0;[m
+[31m-        if (categoryName === "سباكة") {[m
+[31m-            companyDiscountPercent = Math.max(0, Math.min(100, nonNegativeNumber(product.company_discount_percent, "خصم الشركة")));[m
+[31m-        } else {[m
+[31m-            companyDiscountPercent = nonNegativeNumber(product.company_discount_percent, "خصم الشركة");[m
+[31m-        }[m
+[32m+[m[32m            const categoryId = Number(product.category_id);[m
+[32m+[m[32m            if (!Number.isInteger(categoryId) || categoryId <= 0) throw new Error("القسم مطلوب");[m
+ [m
+[31m-        // سعر الشراء[m
+[31m-        let purchasePrice = nonNegativeNumber(product.purchase_price, "سعر الشراء");[m
+[31m-        if (categoryName === "سباكة" && !product.purchase_price_manual) {[m
+[31m-            purchasePrice = salePrice * (1 - companyDiscountPercent / 100);[m
+[31m-        }[m
+[31m-        const purchasePriceManual = product.purchase_price_manual ? 1 : 0;[m
+[31m-        const minStock = nonNegativeNumber(product.min_stock ?? product.minimum_stock, "الحد الأدنى للمخزون");[m
+[31m-        const showroomQty = nonNegativeNumber(product.showroom_quantity, "كمية المعرض");[m
+[31m-        const warehouseQty = nonNegativeNumber(product.warehouse_quantity, "كمية المخزن");[m
+[31m-[m
+[31m-        // سيراميك[m
+[31m-        let tileLengthCm = product.tile_length_cm ? nonNegativeNumber(product.tile_length_cm, "طول البلاطة") : null;[m
+[31m-        let tileWidthCm = product.tile_width_cm ? nonNegativeNumber(product.tile_width_cm, "عرض البلاطة") : null;[m
+[31m-        let tilesPerCarton = product.tiles_per_carton ? nonNegativeNumber(product.tiles_per_carton, "عدد البلاطات") : null;[m
+[31m-        if (categoryName !== "سيراميك") {[m
+[31m-            tileLengthCm = null;[m
+[31m-            tileWidthCm = null;[m
+[31m-            tilesPerCarton = null;[m
+[31m-        }[m
+[32m+[m[32m            const categoryRow = db.prepare([m
+[32m+[m[32m                "SELECT name FROM categories WHERE id = ? AND is_active = 1"[m
+[32m+[m[32m            ).get(categoryId);[m
+[32m+[m[32m            if (!categoryRow) throw new Error("القسم غير موجود أو غير نشط");[m
+[32m+[m[32m            const categoryName = categoryRow.name;[m
+[32m+[m[32m            const unit = isPlumbingPipe(product.name, categoryName) ? "متر" : (product.unit || "قطعة");[m
+ [m
+[31m-        // تكرار الكود[m
+[31m-        const dup = db.prepare("SELECT id FROM products WHERE internal_code = ? AND id != ?").get([m
+[31m-            internalCode, id[m
+[31m-        );[m
+[31m-        if (dup) throw new Error("كود المنتج مستخدم بالفعل");[m
+[31m-        if (barcode && db.prepare("SELECT id FROM products WHERE barcode = ? AND id != ?").get(barcode, id)) {[m
+[31m-            throw new Error("الباركود مستخدم بالفعل");[m
+[31m-        }[m
+[32m+[m[32m            const salePrice = nonNegativeNumber(product.sale_price, "سعر البيع");[m
+[32m+[m
+[32m+[m[32m            // خصم الشركة للسباكه[m
+[32m+[m[32m            let companyDiscountPercent = 0;[m
+[32m+[m[32m            if (categoryName === "سباكة") {[m
+[32m+[m[32m                companyDiscountPercent = Math.max(0, Math.min(100, nonNegativeNumber(product.company_discount_percent, "خصم الشركة")));[m
+[32m+[m[32m            } else {[m
+[32m+[m[32m                companyDiscountPercent = nonNegativeNumber(product.company_discount_percent, "خصم الشركة");[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            // سعر الشراء[m
+[32m+[m[32m            let purchasePrice = nonNegativeNumber(product.purchase_price, "سعر الشراء");[m
+[32m+[m[32m            if (categoryName === "سباكة" && !product.purchase_price_manual) {[m
+[32m+[m[32m                purchasePrice = salePrice * (1 - companyDiscountPercent / 100);[m
+[32m+[m[32m            }[m
+[32m+[m[32m            const purchasePriceManual = product.purchase_price_manual ? 1 : 0;[m
+[32m+[m[32m            const minStock = nonNegativeNumber(product.min_stock ?? product.minimum_stock, "الحد الأدنى للمخزون");[m
+[32m+[m[32m            const showroomQty = nonNegativeNumber(product.showroom_quantity, "كمية المعرض");[m
+[32m+[m[32m            const warehouseQty = nonNegativeNumber(product.warehouse_quantity, "كمية المخزن");[m
+[32m+[m
+[32m+[m[32m            // سيراميك[m
+[32m+[m[32m            let tileLengthCm = product.tile_length_cm ? nonNegativeNumber(product.tile_length_cm, "طول البلاطة") : null;[m
+[32m+[m[32m            let tileWidthCm = product.tile_width_cm ? nonNegativeNumber(product.tile_width_cm, "عرض البلاطة") : null;[m
+[32m+[m[32m            let tilesPerCarton = product.tiles_per_carton ? nonNegativeNumber(product.tiles_per_carton, "عدد البلاطات") : null;[m
+[32m+[m[32m            if (categoryName !== "سيراميك") {[m
+[32m+[m[32m                tileLengthCm = null;[m
+[32m+[m[32m                tileWidthCm = null;[m
+[32m+[m[32m                tilesPerCarton = null;[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            // تكرار الكود[m
+[32m+[m[32m            const dup = db.prepare("SELECT id FROM products WHERE internal_code = ? AND id != ?").get([m
+[32m+[m[32m                internalCode, id[m
+[32m+[m[32m            );[m
+[32m+[m[32m            if (dup) throw new Error("كود المنتج مستخدم بالفعل");[m
+[32m+[m[32m            if (barcode && db.prepare("SELECT id FROM products WHERE barcode = ? AND id != ?").get(barcode, id)) {[m
+[32m+[m[32m                throw new Error("الباركود مستخدم بالفعل");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        db.prepare(`[m
+[32m+[m[32m            db.prepare(`[m
+             UPDATE products SET[m
+                 internal_code = ?,[m
+                 barcode = ?,[m
+[36m@@ -573,127 +573,127 @@[m [mipcMain.handle("products:update", (e, id, product) => {[m
+                 updated_at = CURRENT_TIMESTAMP[m
+             WHERE id = ?[m
+         `).run([m
+[31m-            internalCode,[m
+[31m-            barcode,[m
+[31m-            product.name.trim(),[m
+[31m-            categoryId,[m
+[31m-            unit,[m
+[31m-            purchasePrice,[m
+[31m-            salePrice,[m
+[31m-            minStock,[m
+[31m-            product.active === 0 || product.active === false ? 0 : 1,[m
+[31m-            tileLengthCm,[m
+[31m-            tileWidthCm,[m
+[31m-            tilesPerCarton,[m
+[31m-            companyDiscountPercent,[m
+[31m-            purchasePriceManual,[m
+[31m-            id[m
+[31m-        );[m
+[31m-[m
+[31m-        // تحديث المخزون (الكميات اللي في المعرض والمخزن)[m
+[31m-        const locations = db.prepare("SELECT id, name FROM locations WHERE name IN ('المعرض','المخزن')").all();[m
+[31m-        for (const loc of locations) {[m
+[31m-            const qty = loc.name === "المعرض"[m
+[31m-                ? showroomQty[m
+[31m-                : warehouseQty;[m
+[31m-            const srow = db.prepare("SELECT id, quantity FROM stock WHERE product_id = ? AND location_id = ?").get(id, loc.id);[m
+[31m-            if (srow) {[m
+[31m-                db.prepare("UPDATE stock SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(qty, srow.id);[m
+[31m-                const difference = qty - Number(srow.quantity);[m
+[31m-                if (difference !== 0) {[m
+[31m-                    db.prepare(`[m
+[32m+[m[32m                internalCode,[m
+[32m+[m[32m                barcode,[m
+[32m+[m[32m                product.name.trim(),[m
+[32m+[m[32m                categoryId,[m
+[32m+[m[32m                unit,[m
+[32m+[m[32m                purchasePrice,[m
+[32m+[m[32m                salePrice,[m
+[32m+[m[32m                minStock,[m
+[32m+[m[32m                product.active === 0 || product.active === false ? 0 : 1,[m
+[32m+[m[32m                tileLengthCm,[m
+[32m+[m[32m                tileWidthCm,[m
+[32m+[m[32m                tilesPerCarton,[m
+[32m+[m[32m                companyDiscountPercent,[m
+[32m+[m[32m                purchasePriceManual,[m
+[32m+[m[32m                id[m
+[32m+[m[32m            );[m
+[32m+[m
+[32m+[m[32m            // تحديث المخزون (الكميات اللي في المعرض والمخزن)[m
+[32m+[m[32m            const locations = db.prepare("SELECT id, name FROM locations WHERE name IN ('المعرض','المخزن')").all();[m
+[32m+[m[32m            for (const loc of locations) {[m
+[32m+[m[32m                const qty = loc.name === "المعرض"[m
+[32m+[m[32m                    ? showroomQty[m
+[32m+[m[32m                    : warehouseQty;[m
+[32m+[m[32m                const srow = db.prepare("SELECT id, quantity FROM stock WHERE product_id = ? AND location_id = ?").get(id, loc.id);[m
+[32m+[m[32m                if (srow) {[m
+[32m+[m[32m                    db.prepare("UPDATE stock SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(qty, srow.id);[m
+[32m+[m[32m                    const difference = qty - Number(srow.quantity);[m
+[32m+[m[32m                    if (difference !== 0) {[m
+[32m+[m[32m                        db.prepare(`[m
+                         INSERT INTO stock_movements[m
+                             (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)[m
+                         VALUES (?, ?, 'adjustment', ?, 'product', ?, 'تسوية من تعديل بيانات المنتج')[m
+                     `).run(id, loc.id, difference, id);[m
+[31m-                }[m
+[31m-            } else {[m
+[31m-                db.prepare("INSERT INTO stock (product_id, location_id, quantity) VALUES (?, ?, ?)").run(id, loc.id, qty);[m
+[31m-                if (qty > 0) {[m
+[31m-                    db.prepare(`[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    db.prepare("INSERT INTO stock (product_id, location_id, quantity) VALUES (?, ?, ?)").run(id, loc.id, qty);[m
+[32m+[m[32m                    if (qty > 0) {[m
+[32m+[m[32m                        db.prepare(`[m
+                         INSERT INTO stock_movements[m
+                             (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)[m
+                         VALUES (?, ?, 'adjustment', ?, 'product', ?, 'رصيد افتتاحي')[m
+                     `).run(id, loc.id, qty, id);[m
+[32m+[m[32m                    }[m
+                 }[m
+             }[m
+[31m-        }[m
+ [m
+[31m-        return { success: true, productId: id };[m
+[32m+[m[32m            return { success: true, productId: id };[m
+[32m+[m[32m        });[m
+[32m+[m[32m        return transaction();[m
+     });[m
+[31m-    return transaction();[m
+[31m-});[m
+ [m
+ [m
+[31m-// =========================[m
+[31m-// PRODUCT SETS HANDLERS (الأطقم)[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // PRODUCT SETS HANDLERS (الأطقم)[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-function normalizeProductSet(set, excludingId = null) {[m
+[31m-    if (!set || typeof set !== "object") throw new Error("بيانات الطقم غير صحيحة");[m
+[31m-    const name = set.name?.trim();[m
+[31m-    const setCode = set.set_code?.trim() || null;[m
+[31m-    if (!name) throw new Error("اسم الطقم مطلوب");[m
+[31m-    const categoryId = Number(set.category_id);[m
+[31m-    const category = db.prepare(`[m
+[32m+[m[32m    function normalizeProductSet(set, excludingId = null) {[m
+[32m+[m[32m        if (!set || typeof set !== "object") throw new Error("بيانات الطقم غير صحيحة");[m
+[32m+[m[32m        const name = set.name?.trim();[m
+[32m+[m[32m        const setCode = set.set_code?.trim() || null;[m
+[32m+[m[32m        if (!name) throw new Error("اسم الطقم مطلوب");[m
+[32m+[m[32m        const categoryId = Number(set.category_id);[m
+[32m+[m[32m        const category = db.prepare(`[m
+         SELECT id, name FROM categories[m
+         WHERE id = ? AND is_active = 1 AND name IN ('أدوات صحية', 'خلاطات')[m
+     `).get(categoryId);[m
+[31m-    if (!category) throw new Error("اختر قسمًا صالحًا للطقم");[m
+[31m-    const salePrice = nonNegativeNumber(set.sale_price, "سعر البيع");[m
+[31m-    if (setCode) {[m
+[31m-        const duplicate = excludingId[m
+[31m-            ? db.prepare("SELECT id FROM product_sets WHERE set_code = ? AND id != ?").get(setCode, excludingId)[m
+[31m-            : db.prepare("SELECT id FROM product_sets WHERE set_code = ?").get(setCode);[m
+[31m-        if (duplicate) throw new Error("كود الطقم مستخدم بالفعل");[m
+[31m-    }[m
+[31m-    if (!Array.isArray(set.items) || set.items.length === 0) {[m
+[31m-        throw new Error("أضف مكونًا واحدًا على الأقل للطقم");[m
+[31m-    }[m
+[31m-    const combinedItems = new Map();[m
+[31m-    for (const item of set.items) {[m
+[31m-        const productId = Number(item.product_id);[m
+[31m-        const product = db.prepare(`[m
+[32m+[m[32m        if (!category) throw new Error("اختر قسمًا صالحًا للطقم");[m
+[32m+[m[32m        const salePrice = nonNegativeNumber(set.sale_price, "سعر البيع");[m
+[32m+[m[32m        if (setCode) {[m
+[32m+[m[32m            const duplicate = excludingId[m
+[32m+[m[32m                ? db.prepare("SELECT id FROM product_sets WHERE set_code = ? AND id != ?").get(setCode, excludingId)[m
+[32m+[m[32m                : db.prepare("SELECT id FROM product_sets WHERE set_code = ?").get(setCode);[m
+[32m+[m[32m            if (duplicate) throw new Error("كود الطقم مستخدم بالفعل");[m
+[32m+[m[32m        }[m
+[32m+[m[32m        if (!Array.isArray(set.items) || set.items.length === 0) {[m
+[32m+[m[32m            throw new Error("أضف مكونًا واحدًا على الأقل للطقم");[m
+[32m+[m[32m        }[m
+[32m+[m[32m        const combinedItems = new Map();[m
+[32m+[m[32m        for (const item of set.items) {[m
+[32m+[m[32m            const productId = Number(item.product_id);[m
+[32m+[m[32m            const product = db.prepare(`[m
+             SELECT p.id FROM products p[m
+             JOIN categories c ON c.id = p.category_id[m
+             WHERE p.id = ? AND p.is_active = 1[m
+                 AND c.name IN ('أدوات صحية', 'خلاطات')[m
+         `).get(productId);[m
+[31m-        if (!product) throw new Error("أحد مكونات الطقم غير موجود أو غير نشط");[m
+[31m-        const quantity = Number(item.quantity);[m
+[31m-        if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("كمية مكون الطقم غير صحيحة");[m
+[31m-        combinedItems.set(productId, (combinedItems.get(productId) || 0) + quantity);[m
+[32m+[m[32m            if (!product) throw new Error("أحد مكونات الطقم غير موجود أو غير نشط");[m
+[32m+[m[32m            const quantity = Number(item.quantity);[m
+[32m+[m[32m            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("كمية مكون الطقم غير صحيحة");[m
+[32m+[m[32m            combinedItems.set(productId, (combinedItems.get(productId) || 0) + quantity);[m
+[32m+[m[32m        }[m
+[32m+[m[32m        return {[m
+[32m+[m[32m            name,[m
+[32m+[m[32m            setCode,[m
+[32m+[m[32m            categoryId,[m
+[32m+[m[32m            salePrice,[m
+[32m+[m[32m            description: set.description?.trim() || null,[m
+[32m+[m[32m            items: [...combinedItems].map(([product_id, quantity]) => ({ product_id, quantity }))[m
+[32m+[m[32m        };[m
+     }[m
+[31m-    return {[m
+[31m-        name,[m
+[31m-        setCode,[m
+[31m-        categoryId,[m
+[31m-        salePrice,[m
+[31m-        description: set.description?.trim() || null,[m
+[31m-        items: [...combinedItems].map(([product_id, quantity]) => ({ product_id, quantity }))[m
+[31m-    };[m
+[31m-}[m
+ [m
+[31m-ipcMain.handle("productSets:getAll", () => {[m
+[31m-    const sets = db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("productSets:getAll", () => {[m
+[32m+[m[32m        const sets = db.prepare(`[m
+         SELECT ps.*, c.name AS category_name[m
+         FROM product_sets ps[m
+         LEFT JOIN categories c ON c.id = ps.category_id[m
+         ORDER BY ps.id DESC[m
+     `).all();[m
+[31m-    for (const s of sets) {[m
+[31m-        s.items = db.prepare(`[m
+[32m+[m[32m        for (const s of sets) {[m
+[32m+[m[32m            s.items = db.prepare(`[m
+             SELECT psi.id, psi.product_id, psi.quantity, p.name AS product_name, p.sale_price[m
+             FROM product_set_items psi[m
+             JOIN products p ON p.id = psi.product_id[m
+             WHERE psi.set_id = ?[m
+         `).all(s.id);[m
+[31m-    }[m
+[31m-    return sets;[m
+[31m-});[m
+[32m+[m[32m        }[m
+[32m+[m[32m        return sets;[m
+[32m+[m[32m    });[m
+ [m
+[31m-ipcMain.handle("productSets:getSanitaryProducts", () => {[m
+[31m-    return db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("productSets:getSanitaryProducts", () => {[m
+[32m+[m[32m        return db.prepare(`[m
+         SELECT p.id, p.name, p.internal_code, p.sale_price, p.unit, c.name AS category_name[m
+         FROM products p[m
+         JOIN categories c ON c.id = p.category_id[m
+[36m@@ -701,75 +701,74 @@[m [mipcMain.handle("productSets:getSanitaryProducts", () => {[m
+           AND p.is_active = 1[m
+         ORDER BY c.name, p.name[m
+     `).all();[m
+[31m-});[m
+[32m+[m[32m    });[m
+ [m
+[31m-ipcMain.handle("productSets:add", (_e, set) => {[m
+[31m-    const transaction = db.transaction(() => {[m
+[31m-        const normalized = normalizeProductSet(set);[m
+[31m-        const result = db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("productSets:add", (_e, set) => {[m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+[32m+[m[32m            const normalized = normalizeProductSet(set);[m
+[32m+[m[32m            const result = db.prepare(`[m
+             INSERT INTO product_sets (set_code, name, category_id, sale_price, description)[m
+             VALUES (?, ?, ?, ?, ?)[m
+         `).run([m
+[31m-            normalized.setCode,[m
+[31m-            normalized.name,[m
+[31m-            normalized.categoryId,[m
+[31m-            normalized.salePrice,[m
+[31m-            normalized.description[m
+[31m-        );[m
+[31m-        const setId = Number(result.lastInsertRowid);[m
+[31m-        const ins = db.prepare(`[m
+[32m+[m[32m                normalized.setCode,[m
+[32m+[m[32m                normalized.name,[m
+[32m+[m[32m                normalized.categoryId,[m
+[32m+[m[32m                normalized.salePrice,[m
+[32m+[m[32m                normalized.description[m
+[32m+[m[32m            );[m
+[32m+[m[32m            const setId = Number(result.lastInsertRowid);[m
+[32m+[m[32m            const ins = db.prepare(`[m
+             INSERT INTO product_set_items (set_id, product_id, quantity) VALUES (?, ?, ?)[m
+         `);[m
+[31m-        for (const item of normalized.items) {[m
+[31m-            ins.run(setId, item.product_id, item.quantity);[m
+[31m-        }[m
+[31m-        return { success: true, setId };[m
+[32m+[m[32m            for (const item of normalized.items) {[m
+[32m+[m[32m                ins.run(setId, item.product_id, item.quantity);[m
+[32m+[m[32m            }[m
+[32m+[m[32m            return { success: true, setId };[m
+[32m+[m[32m        });[m
+[32m+[m[32m        return transaction();[m
+     });[m
+[31m-    return transaction();[m
+[31m-});[m
+ [m
+[31m-ipcMain.handle("productSets:update", (_e, id, set) => {[m
+[31m-    const transaction = db.transaction(() => {[m
+[31m-        id = Number(id);[m
+[31m-        if (!db.prepare("SELECT id FROM product_sets WHERE id = ?").get(id)) {[m
+[31m-            throw new Error("الطقم غير موجود");[m
+[31m-        }[m
+[31m-        const normalized = normalizeProductSet(set, id);[m
+[31m-        db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("productSets:update", (_e, id, set) => {[m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+[32m+[m[32m            id = Number(id);[m
+[32m+[m[32m            if (!db.prepare("SELECT id FROM product_sets WHERE id = ?").get(id)) {[m
+[32m+[m[32m                throw new Error("الطقم غير موجود");[m
+[32m+[m[32m            }[m
+[32m+[m[32m            const normalized = normalizeProductSet(set, id);[m
+[32m+[m[32m            db.prepare(`[m
+             UPDATE product_sets[m
+             SET set_code = ?, name = ?, category_id = ?, sale_price = ?,[m
+                 description = ?, updated_at = CURRENT_TIMESTAMP[m
+             WHERE id = ?[m
+         `).run(normalized.setCode, normalized.name, normalized.categoryId, normalized.salePrice, normalized.description, id);[m
+[31m-        db.prepare("DELETE FROM product_set_items WHERE set_id = ?").run(id);[m
+[31m-        const insertItem = db.prepare(`[m
+[32m+[m[32m            db.prepare("DELETE FROM product_set_items WHERE set_id = ?").run(id);[m
+[32m+[m[32m            const insertItem = db.prepare(`[m
+             INSERT INTO product_set_items (set_id, product_id, quantity) VALUES (?, ?, ?)[m
+         `);[m
+[31m-        for (const item of normalized.items) {[m
+[31m-            insertItem.run(id, item.product_id, item.quantity);[m
+[31m-        }[m
+[31m-        return { success: true, setId: id };[m
+[32m+[m[32m            for (const item of normalized.items) {[m
+[32m+[m[32m                insertItem.run(id, item.product_id, item.quantity);[m
+[32m+[m[32m            }[m
+[32m+[m[32m            return { success: true, setId: id };[m
+[32m+[m[32m        });[m
+[32m+[m[32m        return transaction();[m
+     });[m
+[31m-    return transaction();[m
+[31m-});[m
+ [m
+[31m-ipcMain.handle("productSets:setActive", (_e, id, active) => {[m
+[31m-    const result = db.prepare(`[m
+[32m+[m[32m    ipcMain.handle("productSets:setActive", (_e, id, active) => {[m
+[32m+[m[32m        const result = db.prepare(`[m
+         UPDATE product_sets SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?[m
+     `).run(active ? 1 : 0, Number(id));[m
+[31m-    if (result.changes !== 1) throw new Error("الطقم غير موجود");[m
+[31m-    return { success: true };[m
+[31m-});[m
+[32m+[m[32m        if (result.changes !== 1) throw new Error("الطقم غير موجود");[m
+[32m+[m[32m        return { success: true };[m
+[32m+[m[32m    });[m
+ [m
+ [m
+[31m-// =========================[m
+[31m-// SALES: القائمة + الحصول على فاتورة + تعديل[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // SALES: القائمة + الحصول على فاتورة + تعديل[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("sales:getAll", (_e, filter = "normal") => {[m
+[31m-    // filter: 'normal' = المبيعات العادية (cash/credit)، 'plumbing_order' = طلبيه سباكه، 'all' = الكل[m
+[31m-    let rows;[m
+[31m-    const baseSelect = `[m
+[32m+[m[32m    ipcMain.handle("sales:getAll", (_e, filter = "normal", searchTerm = "") => {[m
+[32m+[m[32m        // Without a search, show the latest 100. With a search, include matching historical invoices.[m
+[32m+[m[32m        const baseSelect = `[m
+             SELECT[m
+                 s.*,[m
+                 s.total_amount AS total,[m
+[36m@@ -778,31 +777,29 @@[m [mipcMain.handle("sales:getAll", (_e, filter = "normal") => {[m
+                 c.name AS customer_name[m
+             FROM sales s[m
+             LEFT JOIN customers c ON c.id = s.customer_id[m
+[31m-    `;[m
+[31m-    if (filter === "all") {[m
+[31m-        rows = db.prepare(baseSelect + `[m
+[31m-            ORDER BY s.id DESC[m
+[31m-            LIMIT 100[m
+[31m-        `).all();[m
+[31m-    } else if (filter === "plumbing_order") {[m
+[31m-        rows = db.prepare(baseSelect + `[m
+[31m-            WHERE s.sale_type = 'plumbing_order'[m
+[31m-            ORDER BY s.id DESC[m
+[31m-            LIMIT 100[m
+[31m-        `).all();[m
+[31m-    } else {[m
+[31m-        rows = db.prepare(baseSelect + `[m
+[31m-            WHERE (s.sale_type IS NULL OR s.sale_type != 'plumbing_order')[m
+[31m-            ORDER BY s.id DESC[m
+[31m-            LIMIT 100[m
+[31m-        `).all();[m
+[31m-    }[m
+[31m-    return rows;[m
+[31m-});[m
+[32m+[m[32m        `;[m
+[32m+[m[32m        const conditions = ["COALESCE(s.is_hidden, 0) = 0"];[m
+[32m+[m[32m        const params = [];[m
+[32m+[m[32m        if (filter === "plumbing_order") {[m
+[32m+[m[32m            conditions.push("s.sale_type = 'plumbing_order'");[m
+[32m+[m[32m        } else if (filter !== "all") {[m
+[32m+[m[32m            conditions.push("(s.sale_type IS NULL OR s.sale_type != 'plumbing_order')");[m
+[32m+[m[32m        }[m
+ [m
+[31m-ipcMain.handle("sales:getById", (_e, id) => {[m
+[31m-    id = Number(id);[m
+[31m-    const sale = db.prepare(`[m
+[32m+[m[32m        const query = String(searchTerm || "").trim();[m
+[32m+[m[32m        if (query) {[m
+[32m+[m[32m            conditions.push("(COALESCE(c.name, '') LIKE ? OR COALESCE(s.invoice_number, '') LIKE ?)");[m
+[32m+[m[32m            params.push(`%${query}%`, `%${query}%`);[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";[m
+[32m+[m[32m        const limitClause = query ? "" : "LIMIT 100";[m
+[32m+[m[32m        return db.prepare(`${baseSelect} ${whereClause} ORDER BY s.id DESC ${limitClause}`).all(...params);[m
+[32m+[m[32m    });[m
+[32m+[m
+[32m+[m[32m    ipcMain.handle("sales:getById", (_e, id) => {[m
+[32m+[m[32m        id = Number(id);[m
+[32m+[m[32m        const sale = db.prepare(`[m
+         SELECT[m
+             s.*,[m
+             s.total_amount AS total,[m
+[36m@@ -815,8 +812,8 @@[m [mipcMain.handle("sales:getById", (_e, id) => {[m
+         LEFT JOIN locations l ON l.id = s.location_id[m
+         WHERE s.id = ?[m
+     `).get(id);[m
+[31m-    if (!sale) return null;[m
+[31m-    sale.items = db.prepare(`[m
+[32m+[m[32m        if (!sale) return null;[m
+[32m+[m[32m        sale.items = db.prepare(`[m
+         SELECT[m
+             si.*,[m
+             si.total_amount AS total,[m
+[36m@@ -835,193 +832,671 @@[m [mipcMain.handle("sales:getById", (_e, id) => {[m
+         LEFT JOIN categories cat ON cat.id = p.category_id[m
+         WHERE si.sale_id = ?[m
+     `).all(id);[m
+[31m-    sale.payments = db.prepare(`[m
+[32m+[m[32m        sale.payments = db.prepare(`[m
+         SELECT * FROM sale_payments WHERE sale_id = ? ORDER BY id[m
+     `).all(id);[m
+[31m-    return sale;[m
+[31m-});[m
+[32m+[m[32m        const returnRows = db.prepare(`[m
+[32m+[m[32m            SELECT[m
+[32m+[m[32m                sr.id AS return_id,[m
+[32m+[m[32m                sr.return_number,[m
+[32m+[m[32m                sr.total_amount AS return_total,[m
+[32m+[m[32m                sr.balance_credit_amount,[m
+[32m+[m[32m                sr.cash_refund_amount,[m
+[32m+[m[32m                sr.notes AS return_notes,[m
+[32m+[m[32m                sr.created_at AS return_created_at,[m
+[32m+[m[32m                sri.id AS return_item_id,[m
+[32m+[m[32m                sri.sale_item_id,[m
+[32m+[m[32m                sri.product_id,[m
+[32m+[m[32m                sri.location_id,[m
+[32m+[m[32m                sri.quantity,[m
+[32m+[m[32m                sri.display_quantity,[m
+[32m+[m[32m                sri.display_unit,[m
+[32m+[m[32m                sri.unit_price,[m
+[32m+[m[32m                sri.total_amount AS item_total,[m
+[32m+[m[32m                p.name AS product_name,[m
+[32m+[m[32m                l.name AS location_name[m
+[32m+[m[32m            FROM sales_returns sr[m
+[32m+[m[32m            LEFT JOIN sales_return_items sri ON sri.return_id = sr.id[m
+[32m+[m[32m            LEFT JOIN products p ON p.id = sri.product_id[m
+[32m+[m[32m            LEFT JOIN locations l ON l.id = sri.location_id[m
+[32m+[m[32m            WHERE sr.sale_id = ?[m
+[32m+[m[32m            ORDER BY sr.id, sri.id[m
+[32m+[m[32m        `).all(id);[m
+ [m
+[31m-ipcMain.handle("sales:delete", (_event, saleId, password) => {[m
+[31m-    verifyDeletionPassword(db, password);[m
+[31m-    return db.transaction(() => {[m
+[31m-        const id = Number(saleId);[m
+[31m-        const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);[m
+[31m-        if (!sale) throw new Error("فاتورة البيع غير موجودة");[m
+[31m-        if (db.prepare("SELECT 1 FROM sales_returns WHERE sale_id = ? LIMIT 1").get(id)) {[m
+[31m-            throw new Error("لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها");[m
+[32m+[m[32m        const returnMap = new Map();[m
+[32m+[m[32m        for (const row of returnRows) {[m
+[32m+[m[32m            if (!returnMap.has(row.return_id)) {[m
+[32m+[m[32m                returnMap.set(row.return_id, {[m
+[32m+[m[32m                    id: row.return_id,[m
+[32m+[m[32m                    return_number: row.return_number,[m
+[32m+[m[32m                    total_amount: row.return_total,[m
+[32m+[m[32m                    balance_credit_amount: row.balance_credit_amount,[m
+[32m+[m[32m                    cash_refund_amount: row.cash_refund_amount,[m
+[32m+[m[32m                    notes: row.return_notes,[m
+[32m+[m[32m                    created_at: row.return_created_at,[m
+[32m+[m[32m                    items: [][m
+[32m+[m[32m                });[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            if (row.return_item_id != null) {[m
+[32m+[m[32m                returnMap.get(row.return_id).items.push({[m
+[32m+[m[32m                    id: row.return_item_id,[m
+[32m+[m[32m                    sale_item_id: row.sale_item_id,[m
+[32m+[m[32m                    product_id: row.product_id,[m
+[32m+[m[32m                    product_name: row.product_name,[m
+[32m+[m[32m                    location_id: row.location_id,[m
+[32m+[m[32m                    location_name: row.location_name,[m
+[32m+[m[32m                    quantity: row.quantity,[m
+[32m+[m[32m                    display_quantity: row.display_quantity,[m
+[32m+[m[32m                    display_unit: row.display_unit,[m
+[32m+[m[32m                    unit_price: row.unit_price,[m
+[32m+[m[32m                    total_amount: row.item_total[m
+[32m+[m[32m                });[m
+[32m+[m[32m            }[m
+         }[m
+[32m+[m[32m        sale.returns = Array.from(returnMap.values());[m
+[32m+[m
+[32m+[m[32m        return sale;[m
+[32m+[m[32m    });[m
+[32m+[m
+[32m+[m[32m    ipcMain.handle("sales:delete", (_event, saleId, password) => {[m
+[32m+[m[32m        verifyDeletionPassword(db, password);[m
+[32m+[m[32m        return db.transaction(() => {[m
+[32m+[m[32m            const id = Number(saleId);[m
+[32m+[m[32m            const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);[m
+[32m+[m[32m            if (!sale) throw new Error("فاتورة البيع غير موجودة");[m
+[32m+[m[32m            if (db.prepare("SELECT 1 FROM sales_returns WHERE sale_id = ? LIMIT 1").get(id)) {[m
+[32m+[m[32m                throw new Error("لا يمكن حذف الفاتورة لوجود مرتجع مرتبط بها");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        const items = db.prepare(`[m
+[32m+[m[32m            const items = db.prepare(`[m
+             SELECT product_id, location_id, SUM(quantity) AS quantity[m
+             FROM sale_items WHERE sale_id = ?[m
+             GROUP BY product_id, location_id[m
+         `).all(id);[m
+[31m-        for (const item of items) {[m
+[31m-            const stock = db.prepare(`[m
+[32m+[m[32m            for (const item of items) {[m
+[32m+[m[32m                const stock = db.prepare(`[m
+                 SELECT id FROM stock WHERE product_id = ? AND location_id = ?[m
+             `).get(item.product_id, item.location_id);[m
+[31m-            if (!stock) throw new Error("تعذر إرجاع كمية الفاتورة إلى المخزون");[m
+[31m-        }[m
+[32m+[m[32m                if (!stock) throw new Error("تعذر إرجاع كمية الفاتورة إلى المخزون");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        for (const item of items) {[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            for (const item of items) {[m
+[32m+[m[32m                db.prepare(`[m
+                 UPDATE stock SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP[m
+                 WHERE product_id = ? AND location_id = ?[m
+             `).run(item.quantity, item.product_id, item.location_id);[m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO stock_movements[m
+                     (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)[m
+                 VALUES (?, ?, 'return', ?, 'sale_delete', ?, ?)[m
+             `).run([m
+[31m-                item.product_id,[m
+[31m-                item.location_id,[m
+[31m-                item.quantity,[m
+[31m-                id,[m
+[31m-                `حذف فاتورة البيع ${sale.invoice_number}`[m
+[31m-            );[m
+[31m-        }[m
+[32m+[m[32m                    item.product_id,[m
+[32m+[m[32m                    item.location_id,[m
+[32m+[m[32m                    item.quantity,[m
+[32m+[m[32m                    id,[m
+[32m+[m[32m                    `حذف فاتورة البيع ${sale.invoice_number}`[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+ [m
+[31m-        db.prepare(`[m
+[32m+[m[32m            db.prepare(`[m
+             DELETE FROM customer_transactions[m
+             WHERE reference_type = 'sale' AND reference_id = ?[m
+         `).run(id);[m
+[31m-        db.prepare(`[m
+[32m+[m[32m            db.prepare(`[m
+             DELETE FROM cash_transactions[m
+             WHERE reference_type = 'sale' AND reference_id = ?[m
+         `).run(id);[m
+[31m-        db.prepare("DELETE FROM sales WHERE id = ?").run(id);[m
+[31m-        return { success: true };[m
+[31m-    })();[m
+[31m-});[m
+[31m-[m
+[31m-// =========================[m
+[31m-// SAVE SALE[m
+[31m-// =========================[m
+[32m+[m[32m            db.prepare("DELETE FROM sales WHERE id = ?").run(id);[m
+[32m+[m[32m            return { success: true };[m
+[32m+[m[32m        })();[m
+[32m+[m[32m    });[m
+ [m
+[31m-ipcMain.handle("sales:create", (event, sale) => {[m
+[32m+[m[32m    ipcMain.handle("sales:delete", (_event, saleId, password, mode = "reverse") => {[m
+[32m+[m[32m        verifyDeletionPassword(db, password);[m
+[32m+[m[32m        return db.transaction(() => {[m
+[32m+[m[32m            const id = Number(saleId);[m
+[32m+[m[32m            if (!Number.isInteger(id) || id <= 0) {[m
+[32m+[m[32m                throw new Error("رقم الفاتورة غير صحيح");[m
+[32m+[m[32m            }[m
+ [m
+[31m-    const transaction = db.transaction(() => {[m
+[32m+[m[32m            const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);[m
+[32m+[m[32m            if (!sale) throw new Error("فاتورة البيع غير موجودة");[m
+ [m
+[31m-        // =========================[m
+[31m-        // VALIDATION[m
+[31m-        // =========================[m
+[32m+[m[32m            if (mode === "hide") {[m
+[32m+[m[32m                db.prepare("UPDATE sales SET is_hidden = 1 WHERE id = ?").run(id);[m
+[32m+[m[32m                return { success: true, hidden: true };[m
+[32m+[m[32m            }[m
+[32m+[m[32m            if (mode !== "reverse") {[m
+[32m+[m[32m                throw new Error("اختيار الحذف غير صحيح");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        if ([m
+[31m-            !sale ||[m
+[31m-            !Array.isArray(sale.items) ||[m
+[31m-            sale.items.length === 0[m
+[31m-        ) {[m
+[31m-            throw new Error([m
+[31m-                "يجب إضافة صنف واحد على الأقل للفاتورة"[m
+[31m-            );[m
+[31m-        }[m
+[32m+[m[32m            const soldItems = db.prepare(`[m
+[32m+[m[32m                SELECT product_id, location_id, SUM(quantity) AS quantity[m
+[32m+[m[32m                FROM sale_items[m
+[32m+[m[32m                WHERE sale_id = ?[m
+[32m+[m[32m                GROUP BY product_id, location_id[m
+[32m+[m[32m            `).all(id);[m
+[32m+[m
+[32m+[m[32m            const returnedItems = db.prepare(`[m
+[32m+[m[32m                SELECT sri.product_id, sri.location_id,[m
+[32m+[m[32m                    SUM(sri.quantity) AS quantity[m
+[32m+[m[32m                FROM sales_return_items sri[m
+[32m+[m[32m                JOIN sales_returns sr ON sr.id = sri.return_id[m
+[32m+[m[32m                WHERE sr.sale_id = ?[m
+[32m+[m[32m                GROUP BY sri.product_id, sri.location_id[m
+[32m+[m[32m            `).all(id);[m
+[32m+[m
+[32m+[m[32m            for (const item of returnedItems) {[m
+[32m+[m[32m                const stock = db.prepare(`[m
+[32m+[m[32m                    SELECT quantity FROM stock[m
+[32m+[m[32m                    WHERE product_id = ? AND location_id = ?[m
+[32m+[m[32m                `).get(item.product_id, item.location_id);[m
+[32m+[m
+[32m+[m[32m                if (!stock || Number(stock.quantity || 0) + 0.000001 < Number(item.quantity || 0)) {[m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        "تعذر الحذف النهائي: كمية مرتجع أحد الأصناف غير متوفرة في مكان إرجاعها."[m
+[32m+[m[32m                    );[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+ [m
+[32m+[m[32m            for (const item of returnedItems) {[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    UPDATE stock[m
+[32m+[m[32m                    SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP[m
+[32m+[m[32m                    WHERE product_id = ? AND location_id = ?[m
+[32m+[m[32m                `).run(item.quantity, item.product_id, item.location_id);[m
+ [m
+[31m-        const location =[m
+[31m-            sale.location === "المخزن"[m
+[31m-                ? "المخزن"[m
+[31m-                : "المعرض";[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    INSERT INTO stock_movements[m
+[32m+[m[32m                        (product_id, location_id, movement_type, quantity,[m
+[32m+[m[32m                         reference_type, reference_id, notes)[m
+[32m+[m[32m                    VALUES (?, ?, 'adjustment', ?, 'sale_delete', ?, ?)[m
+[32m+[m[32m                `).run([m
+[32m+[m[32m                    item.product_id,[m
+[32m+[m[32m                    item.location_id,[m
+[32m+[m[32m                    -Number(item.quantity),[m
+[32m+[m[32m                    id,[m
+[32m+[m[32m                    `عكس مرتجع عند الحذف النهائي للفاتورة ${sale.invoice_number}`[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+ [m
+[32m+[m[32m            for (const item of soldItems) {[m
+[32m+[m[32m                const stock = db.prepare(`[m
+[32m+[m[32m                    SELECT id FROM stock[m
+[32m+[m[32m                    WHERE product_id = ? AND location_id = ?[m
+[32m+[m[32m                `).get(item.product_id, item.location_id);[m
+ [m
+[31m-        const customerName =[m
+[31m-            sale.customer_name?.trim() || null;[m
+[31m-[m
+[32m+[m[32m                if (stock) {[m
+[32m+[m[32m                    db.prepare(`[m
+[32m+[m[32m                        UPDATE stock[m
+[32m+[m[32m                        SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP[m
+[32m+[m[32m                        WHERE id = ?[m
+[32m+[m[32m                    `).run(item.quantity, stock.id);[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    db.prepare(`[m
+[32m+[m[32m                        INSERT INTO stock (product_id, location_id, quantity)[m
+[32m+[m[32m                        VALUES (?, ?, ?)[m
+[32m+[m[32m                    `).run(item.product_id, item.location_id, item.quantity);[m
+[32m+[m[32m                }[m
+ [m
+[31m-        const notes =[m
+[31m-            sale.notes?.trim() || null;[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    INSERT INTO stock_movements[m
+[32m+[m[32m                        (product_id, location_id, movement_type, quantity,[m
+[32m+[m[32m                         reference_type, reference_id, notes)[m
+[32m+[m[32m                    VALUES (?, ?, 'adjustment', ?, 'sale_delete', ?, ?)[m
+[32m+[m[32m                `).run([m
+[32m+[m[32m                    item.product_id,[m
+[32m+[m[32m                    item.location_id,[m
+[32m+[m[32m                    Number(item.quantity),[m
+[32m+[m[32m                    id,[m
+[32m+[m[32m                    `عكس بيع عند الحذف النهائي للفاتورة ${sale.invoice_number}`[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+ [m
+[32m+[m[32m            db.prepare(`[m
+[32m+[m[32m                DELETE FROM customer_transactions[m
+[32m+[m[32m                WHERE reference_type = 'sale' AND reference_id = ?[m
+[32m+[m[32m            `).run(id);[m
+[32m+[m[32m            db.prepare(`[m
+[32m+[m[32m                DELETE FROM customer_transactions[m
+[32m+[m[32m                WHERE reference_type = 'sales_return'[m
+[32m+[m[32m                  AND reference_id IN ([m
+[32m+[m[32m                      SELECT id FROM sales_returns WHERE sale_id = ?[m
+[32m+[m[32m                  )[m
+[32m+[m[32m            `).run(id);[m
+[32m+[m[32m            db.prepare(`[m
+[32m+[m[32m                DELETE FROM cash_transactions[m
+[32m+[m[32m                WHERE reference_type = 'sale' AND reference_id = ?[m
+[32m+[m[32m            `).run(id);[m
+[32m+[m[32m            db.prepare(`[m
+[32m+[m[32m                DELETE FROM cash_transactions[m
+[32m+[m[32m                WHERE reference_type = 'sales_return'[m
+[32m+[m[32m                  AND reference_id IN ([m
+[32m+[m[32m                      SELECT id FROM sales_returns WHERE sale_id = ?[m
+[32m+[m[32m                  )[m
+[32m+[m[32m            `).run(id);[m
+ [m
+[31m-        const plumbingDiscountPercent =[m
+[31m-            Math.max([m
+[31m-                0,[m
+[31m-                Math.min([m
+[31m-                    100,[m
+[31m-                    Number([m
+[31m-                        sale.plumbing_discount_percent || 0[m
+[31m-                    )[m
+[32m+[m[32m            db.prepare(`[m
+[32m+[m[32m                DELETE FROM sales_return_items[m
+[32m+[m[32m                WHERE return_id IN ([m
+[32m+[m[32m                    SELECT id FROM sales_returns WHERE sale_id = ?[m
+                 )[m
+[32m+[m[32m            `).run(id);[m
+[32m+[m[32m            db.prepare("DELETE FROM sales_returns WHERE sale_id = ?").run(id);[m
+[32m+[m[32m            db.prepare("DELETE FROM sales WHERE id = ?").run(id);[m
+[32m+[m
+[32m+[m[32m            return { success: true, hidden: false };[m
+[32m+[m[32m        })();[m
+[32m+[m[32m    });[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // SAVE SALE[m
+[32m+[m[32m    // =========================[m
+[32m+[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // CREATE SALE RETURN[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    ipcMain.handle("sales:return:create", (_event, saleId, payload) => {[m
+[32m+[m[32m        return db.transaction(() => {[m
+[32m+[m[32m            const id = Number(saleId);[m
+[32m+[m[32m            if (!Number.isInteger(id) || id <= 0) throw new Error("رقم الفاتورة غير صحيح");[m
+[32m+[m[32m            if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {[m
+[32m+[m[32m                throw new Error("أضف صنفًا واحدًا على الأقل للمرتجع");[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            const sale = db.prepare(`[m
+[32m+[m[32m                SELECT * FROM sales WHERE id = ? AND status = 'completed'[m
+[32m+[m[32m            `).get(id);[m
+[32m+[m[32m            if (!sale) throw new Error("الفاتورة غير موجودة أو غير مكتملة");[m
+[32m+[m
+[32m+[m[32m            const originalItems = db.prepare(`[m
+[32m+[m[32m                SELECT[m
+[32m+[m[32m                    si.id,[m
+[32m+[m[32m                    si.product_id,[m
+[32m+[m[32m                    si.quantity,[m
+[32m+[m[32m                    si.unit_price,[m
+[32m+[m[32m                    si.total_amount,[m
+[32m+[m[32m                    si.display_quantity,[m
+[32m+[m[32m                    si.display_unit,[m
+[32m+[m[32m                    si.display_unit_price,[m
+[32m+[m[32m                    p.name AS product_name,[m
+[32m+[m[32m                    p.unit AS product_unit,[m
+[32m+[m[32m                    cat.name AS category_name,[m
+[32m+[m[32m                    COALESCE([m
+[32m+[m[32m                        (SELECT SUM(sri.quantity)[m
+[32m+[m[32m                         FROM sales_return_items sri[m
+[32m+[m[32m                         WHERE sri.sale_item_id = si.id),[m
+[32m+[m[32m                        0[m
+[32m+[m[32m                    ) AS returned_quantity[m
+[32m+[m[32m                FROM sale_items si[m
+[32m+[m[32m                JOIN products p ON p.id = si.product_id[m
+[32m+[m[32m                LEFT JOIN categories cat ON cat.id = p.category_id[m
+[32m+[m[32m                WHERE si.sale_id = ?[m
+[32m+[m[32m            `).all(id);[m
+[32m+[m
+[32m+[m[32m            const itemById = new Map(originalItems.map(item => [Number(item.id), item]));[m
+[32m+[m[32m            const plumbingGross = originalItems.reduce((sum, item) =>[m
+[32m+[m[32m                item.category_name === "سباكة"[m
+[32m+[m[32m                    ? sum + Number(item.total_amount || 0)[m
+[32m+[m[32m                    : sum, 0);[m
+[32m+[m[32m            const subtotal = Number(sale.subtotal || 0);[m
+[32m+[m[32m            const plumbingDiscount = Number([m
+[32m+[m[32m                sale.sale_type === "plumbing_order"[m
+[32m+[m[32m                    ? sale.trader_discount_amount || 0[m
+[32m+[m[32m                    : sale.plumbing_discount_amount || 0[m
+             );[m
+[32m+[m[32m            const plumbingDiscountBase = sale.sale_type === "plumbing_order"[m
+[32m+[m[32m                ? subtotal[m
+[32m+[m[32m                : plumbingGross;[m
+[32m+[m[32m            const plumbingDiscountRate = plumbingDiscountBase > 0[m
+[32m+[m[32m                ? Math.min(1, Math.max(0, plumbingDiscount / plumbingDiscountBase))[m
+[32m+[m[32m                : 0;[m
+[32m+[m[32m            const generalDiscountRate = subtotal > 0[m
+[32m+[m[32m                ? Math.min(1, Math.max(0, Number(sale.general_discount_amount || 0) / subtotal))[m
+[32m+[m[32m                : 0;[m
+[32m+[m
+[32m+[m[32m            const requestedBySaleItem = new Map();[m
+[32m+[m[32m            const preparedReturns = [];[m
+[32m+[m[32m            let totalAmount = 0;[m
+[32m+[m
+[32m+[m[32m            for (const input of payload.items) {[m
+[32m+[m[32m                const saleItemId = Number(input.sale_item_id ?? input.saleItemId);[m
+[32m+[m[32m                const original = itemById.get(saleItemId);[m
+[32m+[m[32m                if (!original) throw new Error("أحد الأصناف لا يتبع هذه الفاتورة");[m
+[32m+[m
+[32m+[m[32m                const displayQuantity = Number(input.display_quantity ?? input.displayQuantity);[m
+[32m+[m[32m                if (!Number.isFinite(displayQuantity) || displayQuantity <= 0) {[m
+[32m+[m[32m                    throw new Error(`كمية مرتجع "${original.product_name}" غير صحيحة`);[m
+[32m+[m[32m                }[m
+ [m
+[32m+[m[32m                const originalStockQuantity = Number(original.quantity || 0);[m
+[32m+[m[32m                const originalDisplayQuantity = Number(original.display_quantity || original.quantity || 0);[m
+[32m+[m[32m                if (originalStockQuantity <= 0 || originalDisplayQuantity <= 0) {[m
+[32m+[m[32m                    throw new Error(`تعذر حساب وحدة الصنف "${original.product_name}"`);[m
+[32m+[m[32m                }[m
+ [m
+[31m-        // =========================[m
+[31m-        // GET LOCATION[m
+[31m-        // =========================[m
+[32m+[m[32m                const alreadyReturned = Number(original.returned_quantity || 0);[m
+[32m+[m[32m                const requestedSoFar = Number(requestedBySaleItem.get(saleItemId) || 0);[m
+[32m+[m[32m                const remainingStockQuantity = originalStockQuantity - alreadyReturned - requestedSoFar;[m
+[32m+[m[32m                const remainingDisplayQuantity =[m
+[32m+[m[32m                    remainingStockQuantity * originalDisplayQuantity / originalStockQuantity;[m
+ [m
+[31m-        const locationRow =[m
+[31m-            db.prepare(`[m
+[31m-                SELECT id[m
+[31m-                FROM locations[m
+[31m-                WHERE name = ?[m
+[31m-            `).get(location);[m
+[32m+[m[32m                if (displayQuantity > remainingDisplayQuantity + 0.000001) {[m
+[32m+[m[32m                    throw new Error(`كمية مرتجع "${original.product_name}" أكبر من الكمية المتبقية`);[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                const stockQuantity =[m
+[32m+[m[32m                    originalStockQuantity * displayQuantity / originalDisplayQuantity;[m
+[32m+[m[32m                requestedBySaleItem.set(saleItemId, requestedSoFar + stockQuantity);[m
+ [m
+[32m+[m[32m                const locationId = Number(input.location_id ?? input.locationId);[m
+[32m+[m[32m                if (!Number.isInteger(locationId) || locationId <= 0) {[m
+[32m+[m[32m                    throw new Error(`اختر مكان إضافة الصنف "${original.product_name}"`);[m
+[32m+[m[32m                }[m
+[32m+[m[32m                const location = db.prepare(`[m
+[32m+[m[32m                    SELECT id, name FROM locations WHERE id = ? AND is_active = 1[m
+[32m+[m[32m                `).get(locationId);[m
+[32m+[m[32m                if (!location) throw new Error("مكان إضافة المرتجع غير موجود أو غير نشط");[m
+[32m+[m
+[32m+[m[32m                const grossAmount = Number(original.total_amount || 0) *[m
+[32m+[m[32m                    stockQuantity / originalStockQuantity;[m
+[32m+[m[32m                const itemPlumbingRate =[m
+[32m+[m[32m                    sale.sale_type === "plumbing_order" ||[m
+[32m+[m[32m                    original.category_name === "سباكة"[m
+[32m+[m[32m                        ? plumbingDiscountRate[m
+[32m+[m[32m                        : 0;[m
+[32m+[m[32m                const netAmount = Math.round([m
+[32m+[m[32m                    grossAmount * (1 - itemPlumbingRate) * (1 - generalDiscountRate) * 100[m
+[32m+[m[32m                ) / 100;[m
+[32m+[m[32m                const displayUnit = String([m
+[32m+[m[32m                    original.display_unit || original.product_unit || "قطعة"[m
+[32m+[m[32m                );[m
+[32m+[m[32m                const unitPrice = netAmount / displayQuantity;[m
+[32m+[m
+[32m+[m[32m                preparedReturns.push({[m
+[32m+[m[32m                    saleItemId,[m
+[32m+[m[32m                    productId: Number(original.product_id),[m
+[32m+[m[32m                    locationId,[m
+[32m+[m[32m                    stockQuantity,[m
+[32m+[m[32m                    displayQuantity,[m
+[32m+[m[32m                    displayUnit,[m
+[32m+[m[32m                    unitPrice,[m
+[32m+[m[32m                    totalAmount: netAmount[m
+[32m+[m[32m                });[m
+[32m+[m[32m                totalAmount += netAmount;[m
+[32m+[m[32m            }[m
+ [m
+[31m-        if (!locationRow) {[m
+[32m+[m[32m            totalAmount = Math.round(totalAmount * 100) / 100;[m
+[32m+[m[32m            if (totalAmount <= 0) throw new Error("قيمة المرتجع يجب أن تكون أكبر من صفر");[m
+ [m
+[31m-            throw new Error([m
+[31m-                "مكان البيع غير موجود"[m
+[32m+[m[32m            const balanceCreditAmount = Math.min([m
+[32m+[m[32m                totalAmount,[m
+[32m+[m[32m                Math.max(0, Number(sale.remaining_amount || 0))[m
+             );[m
+[32m+[m[32m            const cashRefundAmount = Math.round([m
+[32m+[m[32m                Math.max(0, totalAmount - balanceCreditAmount) * 100[m
+[32m+[m[32m            ) / 100;[m
+ [m
+[31m-        }[m
+[32m+[m[32m            let nextReturnId = Number([m
+[32m+[m[32m                db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM sales_returns").get().nextId[m
+[32m+[m[32m            );[m
+[32m+[m[32m            let returnNumber = `R-${String(nextReturnId).padStart(6, "0")}`;[m
+[32m+[m[32m            while (db.prepare("SELECT 1 FROM sales_returns WHERE return_number = ?").get(returnNumber)) {[m
+[32m+[m[32m                nextReturnId += 1;[m
+[32m+[m[32m                returnNumber = `R-${String(nextReturnId).padStart(6, "0")}`;[m
+[32m+[m[32m            }[m
+ [m
+[32m+[m[32m            const returnResult = db.prepare(`[m
+[32m+[m[32m                INSERT INTO sales_returns ([m
+[32m+[m[32m                    return_number, sale_id, customer_id, total_amount,[m
+[32m+[m[32m                    balance_credit_amount, cash_refund_amount, notes[m
+[32m+[m[32m                )[m
+[32m+[m[32m                VALUES (?, ?, ?, ?, ?, ?, ?)[m
+[32m+[m[32m            `).run([m
+[32m+[m[32m                returnNumber,[m
+[32m+[m[32m                id,[m
+[32m+[m[32m                sale.customer_id || null,[m
+[32m+[m[32m                totalAmount,[m
+[32m+[m[32m                balanceCreditAmount,[m
+[32m+[m[32m                cashRefundAmount,[m
+[32m+[m[32m                String(payload.notes || "").trim() || null[m
+[32m+[m[32m            );[m
+[32m+[m[32m            const returnId = Number(returnResult.lastInsertRowid);[m
+ [m
+[31m-        // =========================[m
+[31m-        // CALCULATE TOTALS[m
+[31m-        // =========================[m
+[32m+[m[32m            for (const item of preparedReturns) {[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    INSERT INTO sales_return_items ([m
+[32m+[m[32m                        return_id, sale_item_id, product_id, location_id,[m
+[32m+[m[32m                        quantity, display_quantity, display_unit, unit_price, total_amount[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)[m
+[32m+[m[32m                `).run([m
+[32m+[m[32m                    returnId,[m
+[32m+[m[32m                    item.saleItemId,[m
+[32m+[m[32m                    item.productId,[m
+[32m+[m[32m                    item.locationId,[m
+[32m+[m[32m                    item.stockQuantity,[m
+[32m+[m[32m                    item.displayQuantity,[m
+[32m+[m[32m                    item.displayUnit,[m
+[32m+[m[32m                    item.unitPrice,[m
+[32m+[m[32m                    item.totalAmount[m
+[32m+[m[32m                );[m
+ [m
+[31m-        let subtotal = 0;[m
+[32m+[m[32m                const stock = db.prepare(`[m
+[32m+[m[32m                    SELECT id FROM stock WHERE product_id = ? AND location_id = ?[m
+[32m+[m[32m                `).get(item.productId, item.locationId);[m
+ [m
+[31m-        let plumbingSubtotal = 0;[m
+[32m+[m[32m                if (stock) {[m
+[32m+[m[32m                    db.prepare(`[m
+[32m+[m[32m                        UPDATE stock[m
+[32m+[m[32m                        SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP[m
+[32m+[m[32m                        WHERE id = ?[m
+[32m+[m[32m                    `).run(item.stockQuantity, stock.id);[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    db.prepare(`[m
+[32m+[m[32m                        INSERT INTO stock (product_id, location_id, quantity)[m
+[32m+[m[32m                        VALUES (?, ?, ?)[m
+[32m+[m[32m                    `).run(item.productId, item.locationId, item.stockQuantity);[m
+[32m+[m[32m                }[m
+ [m
+[31m-        const preparedItems = [];[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    INSERT INTO stock_movements ([m
+[32m+[m[32m                        product_id, location_id, movement_type, quantity,[m
+[32m+[m[32m                        reference_type, reference_id, notes[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    VALUES (?, ?, 'return', ?, 'sales_return', ?, ?)[m
+[32m+[m[32m                `).run([m
+[32m+[m[32m                    item.productId,[m
+[32m+[m[32m                    item.locationId,[m
+[32m+[m[32m                    item.stockQuantity,[m
+[32m+[m[32m                    returnId,[m
+[32m+[m[32m                    `مرتجع ${returnNumber} للفاتورة ${sale.invoice_number}`[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+ [m
+[32m+[m[32m            if (balanceCreditAmount > 0 && sale.customer_id) {[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    INSERT INTO customer_transactions ([m
+[32m+[m[32m                        customer_id, transaction_type, reference_type, reference_id,[m
+[32m+[m[32m                        debit, credit, notes[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    VALUES (?, 'return', 'sales_return', ?, 0, ?, ?)[m
+[32m+[m[32m                `).run([m
+[32m+[m[32m                    sale.customer_id,[m
+[32m+[m[32m                    returnId,[m
+[32m+[m[32m                    balanceCreditAmount,[m
+[32m+[m[32m                    `خصم مرتجع ${returnNumber} من حساب الفاتورة ${sale.invoice_number}`[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+ [m
+[31m-        for (const item of sale.items) {[m
+[32m+[m[32m            if (cashRefundAmount > 0) {[m
+[32m+[m[32m                const cashAccount = db.prepare(`[m
+[32m+[m[32m                    SELECT id FROM cash_accounts[m
+[32m+[m[32m                    WHERE name = 'الخزنة الرئيسية' AND is_active = 1[m
+[32m+[m[32m                    LIMIT 1[m
+[32m+[m[32m                `).get();[m
+[32m+[m[32m                if (!cashAccount) throw new Error("الخزنة الرئيسية غير موجودة");[m
+ [m
+[31m-            const productId =[m
+[31m-                Number(item.product_id);[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                    INSERT INTO cash_transactions ([m
+[32m+[m[32m                        cash_account_id, transaction_type, direction, amount,[m
+[32m+[m[32m                        reference_type, reference_id, description[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    VALUES (?, 'sale_return', 'out', ?, 'sales_return', ?, ?)[m
+[32m+[m[32m                `).run([m
+[32m+[m[32m                    cashAccount.id,[m
+[32m+[m[32m                    cashRefundAmount,[m
+[32m+[m[32m                    returnId,[m
+[32m+[m[32m                    `رد نقدي لمرتجع ${returnNumber} من الفاتورة ${sale.invoice_number}`[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+ [m
+[31m-            const quantity =[m
+[31m-                Number(item.quantity);[m
+[32m+[m[32m            db.prepare(`[m
+[32m+[m[32m                UPDATE sales[m
+[32m+[m[32m                SET remaining_amount = MAX(0, remaining_amount - ?),[m
+[32m+[m[32m                    sale_type = CASE[m
+[32m+[m[32m                        WHEN sale_type = 'plumbing_order' THEN sale_type[m
+[32m+[m[32m                        WHEN remaining_amount - ? <= 0.000001 THEN 'cash'[m
+[32m+[m[32m                        ELSE 'credit'[m
+[32m+[m[32m                    END[m
+[32m+[m[32m                WHERE id = ?[m
+[32m+[m[32m            `).run(balanceCreditAmount, balanceCreditAmount, id);[m
+[32m+[m
+[32m+[m[32m            return {[m
+[32m+[m[32m                success: true,[m
+[32m+[m[32m                returnId,[m
+[32m+[m[32m                returnNumber,[m
+[32m+[m[32m                totalAmount,[m
+[32m+[m[32m                balanceCreditAmount,[m
+[32m+[m[32m                cashRefundAmount[m
+[32m+[m[32m            };[m
+[32m+[m[32m        })();[m
+[32m+[m[32m    });[m
+ [m
+[31m-            const unitPrice =[m
+[31m-                Number(item.unit_price);[m
+[32m+[m[32m    ipcMain.handle("sales:create", (event, sale) => {[m
+ [m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+ [m
+[31m-            if (!productId) {[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // VALIDATION[m
+[32m+[m[32m            // =========================[m
+ [m
+[32m+[m[32m            if ([m
+[32m+[m[32m                !sale ||[m
+[32m+[m[32m                !Array.isArray(sale.items) ||[m
+[32m+[m[32m                sale.items.length === 0[m
+[32m+[m[32m            ) {[m
+                 throw new Error([m
+[31m-                    "يوجد صنف غير صحيح في الفاتورة"[m
+[32m+[m[32m                    "يجب إضافة صنف واحد على الأقل للفاتورة"[m
+                 );[m
+[31m-[m
+             }[m
+ [m
+ [m
+[31m-            if ([m
+[31m-                !quantity ||[m
+[31m-                quantity <= 0[m
+[31m-            ) {[m
+[32m+[m[32m            const location =[m
+[32m+[m[32m                sale.location === "المخزن"[m
+[32m+[m[32m                    ? "المخزن"[m
+[32m+[m[32m                    : "المعرض";[m
+ [m
+[31m-                throw new Error([m
+[31m-                    "كمية أحد الأصناف غير صحيحة"[m
+[32m+[m
+[32m+[m[32m            const customerName =[m
+[32m+[m[32m                sale.customer_name?.trim() || null;[m
+[32m+[m
+[32m+[m
+[32m+[m[32m            const notes =[m
+[32m+[m[32m                sale.notes?.trim() || null;[m
+[32m+[m
+[32m+[m
+[32m+[m[32m            const plumbingDiscountPercent =[m
+[32m+[m[32m                Math.max([m
+[32m+[m[32m                    0,[m
+[32m+[m[32m                    Math.min([m
+[32m+[m[32m                        100,[m
+[32m+[m[32m                        Number([m
+[32m+[m[32m                            sale.plumbing_discount_percent || 0[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                    )[m
+                 );[m
+ [m
+[31m-            }[m
+ [m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // GET LOCATION[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-            if ([m
+[31m-                unitPrice < 0 ||[m
+[31m-                Number.isNaN(unitPrice)[m
+[31m-            ) {[m
+[32m+[m[32m            const locationRow =[m
+[32m+[m[32m                db.prepare(`[m
+[32m+[m[32m                SELECT id[m
+[32m+[m[32m                FROM locations[m
+[32m+[m[32m                WHERE name = ?[m
+[32m+[m[32m            `).get(location);[m
+[32m+[m
+[32m+[m
+[32m+[m[32m            if (!locationRow) {[m
+ [m
+                 throw new Error([m
+[31m-                    "سعر أحد الأصناف غير صحيح"[m
+[32m+[m[32m                    "مكان البيع غير موجود"[m
+                 );[m
+ [m
+             }[m
+ [m
+ [m
+[31m-            const product =[m
+[31m-                db.prepare(`[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // CALCULATE TOTALS[m
+[32m+[m[32m            // =========================[m
+[32m+[m
+[32m+[m[32m            let subtotal = 0;[m
+[32m+[m
+[32m+[m[32m            let plumbingSubtotal = 0;[m
+[32m+[m
+[32m+[m[32m            const preparedItems = [];[m
+[32m+[m
+[32m+[m
+[32m+[m[32m            for (const item of sale.items) {[m
+[32m+[m
+[32m+[m[32m                const productId =[m
+[32m+[m[32m                    Number(item.product_id);[m
+[32m+[m
+[32m+[m[32m                const quantity =[m
+[32m+[m[32m                    Number(item.quantity);[m
+[32m+[m
+[32m+[m[32m                const unitPrice =[m
+[32m+[m[32m                    Number(item.unit_price);[m
+[32m+[m
+[32m+[m
+[32m+[m[32m                if (!productId) {[m
+[32m+[m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        "يوجد صنف غير صحيح في الفاتورة"[m
+[32m+[m[32m                    );[m
+[32m+[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m
+[32m+[m[32m                if ([m
+[32m+[m[32m                    !quantity ||[m
+[32m+[m[32m                    quantity <= 0[m
+[32m+[m[32m                ) {[m
+[32m+[m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        "كمية أحد الأصناف غير صحيحة"[m
+[32m+[m[32m                    );[m
+[32m+[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m
+[32m+[m[32m                if ([m
+[32m+[m[32m                    unitPrice < 0 ||[m
+[32m+[m[32m                    Number.isNaN(unitPrice)[m
+[32m+[m[32m                ) {[m
+[32m+[m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        "سعر أحد الأصناف غير صحيح"[m
+[32m+[m[32m                    );[m
+[32m+[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m
+[32m+[m[32m                const product =[m
+[32m+[m[32m                    db.prepare(`[m
+                     SELECT[m
+                         p.id,[m
+                         p.name,[m
+[36m@@ -1036,151 +1511,156 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                 `).get(productId);[m
+ [m
+ [m
+[31m-            if (!product) {[m
+[32m+[m[32m                if (!product) {[m
+ [m
+[31m-                throw new Error([m
+[31m-                    "أحد المنتجات غير موجود أو غير نشط"[m
+[31m-                );[m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        "أحد المنتجات غير موجود أو غير نشط"[m
+[32m+[m[32m                    );[m
+ [m
+[31m-            }[m
+[32m+[m[32m                }[m
+ [m
+ [m
+[31m-            // =========================[m
+[31m-            // CHECK STOCK[m
+[31m-            // =========================[m
+[32m+[m[32m                // =========================[m
+[32m+[m[32m                // CHECK STOCK[m
+[32m+[m[32m                // =========================[m
+ [m
+[31m-            const stockRow =[m
+[31m-                db.prepare(`[m
+[32m+[m[32m                const stockRow =[m
+[32m+[m[32m                    db.prepare(`[m
+                     SELECT quantity[m
+                     FROM stock[m
+                     WHERE product_id = ?[m
+                       AND location_id = ?[m
+                 `).get([m
+[31m-                    productId,[m
+[31m-                    locationRow.id[m
+[31m-                );[m
+[31m-[m
+[31m-[m
+[31m-            const available =[m
+[31m-                Number([m
+[31m-                    stockRow?.quantity || 0[m
+[31m-                );[m
+[31m-[m
+[32m+[m[32m                        productId,[m
+[32m+[m[32m                        locationRow.id[m
+[32m+[m[32m                    );[m
+ [m
+[31m-            if (quantity > available) {[m
+ [m
+[31m-                throw new Error([m
+[31m-                    `الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`[m
+[31m-                );[m
+[31m-[m
+[31m-            }[m
+[32m+[m[32m                const available =[m
+[32m+[m[32m                    Number([m
+[32m+[m[32m                        stockRow?.quantity || 0[m
+[32m+[m[32m                    );[m
+ [m
+ [m
+[31m-            const total =[m
+[31m-                quantity *[m
+[31m-                unitPrice;[m
+[32m+[m[32m                if (quantity > available) {[m
+ [m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        `الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`[m
+[32m+[m[32m                    );[m
+ [m
+[31m-            subtotal += total;[m
+[32m+[m[32m                }[m
+ [m
+ [m
+[31m-            if ([m
+[31m-                product.category_name ===[m
+[31m-                "سباكة"[m
+[31m-            ) {[m
+[32m+[m[32m                const total =[m
+[32m+[m[32m                    quantity *[m
+[32m+[m[32m                    unitPrice;[m
+ [m
+[31m-                plumbingSubtotal +=[m
+[31m-                    total;[m
+ [m
+[31m-            }[m
+[32m+[m[32m                subtotal += total;[m
+ [m
+ [m
+[31m-            preparedItems.push({[m
+[32m+[m[32m                if ([m
+[32m+[m[32m                    product.category_name ===[m
+[32m+[m[32m                    "سباكة"[m
+[32m+[m[32m                ) {[m
+ [m
+[31m-                productId,[m
+[32m+[m[32m                    plumbingSubtotal +=[m
+[32m+[m[32m                        total;[m
+ [m
+[31m-                quantity,[m
+[32m+[m[32m                }[m
+ [m
+[31m-                unitPrice,[m
+ [m
+[31m-                total,[m
+ [m
+[31m-                purchasePrice:[m
+[31m-                    Number([m
+[31m-                        product.purchase_price || 0[m
+[31m-                    )[m
+[32m+[m[32m                const displayQuantity = Number([m
+[32m+[m[32m                    item.display_quantity ?? item.displayQuantity ?? quantity[m
+[32m+[m[32m                );[m
+[32m+[m[32m                const displayUnit =[m
+[32m+[m[32m                    String(item.display_unit ?? item.displayUnit ?? "").trim() || null;[m
+[32m+[m[32m                const displayUnitPrice = Number([m
+[32m+[m[32m                    item.display_unit_price ?? item.displayUnitPrice ?? unitPrice[m
+[32m+[m[32m                );[m
+ [m
+[31m-            });[m
+[32m+[m[32m                preparedItems.push({[m
+[32m+[m[32m                    productId,[m
+[32m+[m[32m                    quantity,[m
+[32m+[m[32m                    unitPrice,[m
+[32m+[m[32m                    total,[m
+[32m+[m[32m                    displayQuantity,[m
+[32m+[m[32m                    displayUnit,[m
+[32m+[m[32m                    displayUnitPrice,[m
+[32m+[m[32m                    purchasePrice: Number(product.purchase_price || 0)[m
+ [m
+[31m-        }[m
+[32m+[m[32m                });[m
+ [m
+[32m+[m[32m            }[m
+ [m
+[31m-        // =========================[m
+[31m-        // PLUMBING DISCOUNT[m
+[31m-        // =========================[m
+ [m
+[31m-        const plumbingDiscountAmount =[m
+[31m-            plumbingSubtotal *[m
+[31m-            plumbingDiscountPercent /[m
+[31m-            100;[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // PLUMBING DISCOUNT[m
+[32m+[m[32m            // =========================[m
+ [m
+[32m+[m[32m            const plumbingDiscountAmount =[m
+[32m+[m[32m                plumbingSubtotal *[m
+[32m+[m[32m                plumbingDiscountPercent /[m
+[32m+[m[32m                100;[m
+ [m
+[31m-        const grandTotal =[m
+[31m-            subtotal -[m
+[31m-            plumbingDiscountAmount;[m
+ [m
+[32m+[m[32m            const grandTotal =[m
+[32m+[m[32m                subtotal -[m
+[32m+[m[32m                plumbingDiscountAmount;[m
+ [m
+[31m-        const paid =[m
+[31m-            Math.max([m
+[31m-                0,[m
+[31m-                Number(sale.paid || 0)[m
+[31m-            );[m
+ [m
+[32m+[m[32m            const paid =[m
+[32m+[m[32m                Math.max([m
+[32m+[m[32m                    0,[m
+[32m+[m[32m                    Number(sale.paid || 0)[m
+[32m+[m[32m                );[m
+ [m
+[31m-        if (paid > grandTotal) {[m
+ [m
+[31m-            throw new Error([m
+[31m-                "المبلغ المدفوع أكبر من إجمالي الفاتورة"[m
+[31m-            );[m
+[32m+[m[32m            if (paid > grandTotal) {[m
+ [m
+[31m-        }[m
+[32m+[m[32m                throw new Error([m
+[32m+[m[32m                    "المبلغ المدفوع أكبر من إجمالي الفاتورة"[m
+[32m+[m[32m                );[m
+ [m
+[32m+[m[32m            }[m
+ [m
+[31m-        const remaining =[m
+[31m-            grandTotal - paid;[m
+ [m
+[32m+[m[32m            const remaining =[m
+[32m+[m[32m                grandTotal - paid;[m
+ [m
+[31m-        // =========================[m
+[31m-        // CUSTOMER[m
+[31m-        // =========================[m
+ [m
+[31m-        let customerId = null;[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // CUSTOMER[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        if (customerName) {[m
+[31m-            const existingCustomer =[m
+[31m-                db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);[m
+[31m-            if (existingCustomer) {[m
+[31m-                customerId = existingCustomer.id;[m
+[31m-            } else {[m
+[31m-                const newCustomer =[m
+[31m-                    db.prepare(`INSERT INTO customers (name, is_active) VALUES (?, 1)`).run(customerName);[m
+[31m-                customerId = newCustomer.lastInsertRowid;[m
+[32m+[m[32m            let customerId = null;[m
+[32m+[m
+[32m+[m[32m            if (customerName) {[m
+[32m+[m[32m                const existingCustomer =[m
+[32m+[m[32m                    db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);[m
+[32m+[m[32m                if (existingCustomer) {[m
+[32m+[m[32m                    customerId = existingCustomer.id;[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    const newCustomer =[m
+[32m+[m[32m                        db.prepare(`INSERT INTO customers (name, is_active) VALUES (?, 1)`).run(customerName);[m
+[32m+[m[32m                    customerId = newCustomer.lastInsertRowid;[m
+[32m+[m[32m                }[m
+             }[m
+[31m-        }[m
+ [m
+[31m-        // نوع الفاتورة: نقدي أو آجل[m
+[31m-        const saleType = (remaining > 0 ? "credit" : "cash");[m
+[32m+[m[32m            // نوع الفاتورة: نقدي أو آجل[m
+[32m+[m[32m            const saleType = (remaining > 0 ? "credit" : "cash");[m
+ [m
+[31m-        // =========================[m
+[31m-        // CREATE SALE[m
+[31m-        // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // CREATE SALE[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        const nextSaleId = db.prepare([m
+[31m-            "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM sales"[m
+[31m-        ).get().nextId;[m
+[31m-        const invoiceNumber = `S-${String(nextSaleId).padStart(6, "0")}`;[m
+[31m-        const saleResult =[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            const nextSaleId = db.prepare([m
+[32m+[m[32m                "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM sales"[m
+[32m+[m[32m            ).get().nextId;[m
+[32m+[m[32m            const invoiceNumber = `S-${String(nextSaleId).padStart(6, "0")}`;[m
+[32m+[m[32m            const saleResult =[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO sales ([m
+                     invoice_number,[m
+                     customer_id,[m
+[36m@@ -1198,79 +1678,85 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                 )[m
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'completed')[m
+             `).run([m
+[31m-                invoiceNumber,[m
+[31m-                customerId,[m
+[31m-                locationRow.id,[m
+[31m-                saleType,[m
+[31m-                subtotal,[m
+[31m-                plumbingDiscountPercent,[m
+[31m-                plumbingDiscountAmount,[m
+[31m-                grandTotal,[m
+[31m-                paid,[m
+[31m-                remaining,[m
+[31m-                notes[m
+[31m-            );[m
+[31m-[m
+[31m-        const saleId = saleResult.lastInsertRowid;[m
+[31m-[m
+[32m+[m[32m                    invoiceNumber,[m
+[32m+[m[32m                    customerId,[m
+[32m+[m[32m                    locationRow.id,[m
+[32m+[m[32m                    saleType,[m
+[32m+[m[32m                    subtotal,[m
+[32m+[m[32m                    plumbingDiscountPercent,[m
+[32m+[m[32m                    plumbingDiscountAmount,[m
+[32m+[m[32m                    grandTotal,[m
+[32m+[m[32m                    paid,[m
+[32m+[m[32m                    remaining,[m
+[32m+[m[32m                    notes[m
+[32m+[m[32m                );[m
+ [m
+[31m-        // =========================[m
+[31m-        // INSERT SALE ITEMS[m
+[31m-        // =========================[m
+[32m+[m[32m            const saleId = saleResult.lastInsertRowid;[m
+ [m
+[31m-        const insertItem =[m
+[31m-            db.prepare(`[m
+[31m-                INSERT INTO sale_items ([m
+[31m-                    sale_id,[m
+[31m-                    product_id,[m
+[31m-                    location_id,[m
+[31m-                    quantity,[m
+[31m-                    unit_price,[m
+[31m-                    total_amount,[m
+[31m-                    purchase_price[m
+[31m-                )[m
+[31m-                VALUES (?, ?, ?, ?, ?, ?, ?)[m
+[31m-            `);[m
+ [m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // INSERT SALE ITEMS[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        for (const item of preparedItems) {[m
+[32m+[m[32m            const insertItem = db.prepare(`[m
+[32m+[m[32m    INSERT INTO sale_items ([m
+[32m+[m[32m        sale_id,[m
+[32m+[m[32m        product_id,[m
+[32m+[m[32m        location_id,[m
+[32m+[m[32m        quantity,[m
+[32m+[m[32m        unit_price,[m
+[32m+[m[32m        total_amount,[m
+[32m+[m[32m        purchase_price,[m
+[32m+[m[32m        display_quantity,[m
+[32m+[m[32m        display_unit,[m
+[32m+[m[32m        display_unit_price[m
+[32m+[m[32m    )[m
+[32m+[m[32m    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)[m
+[32m+[m[32m`);[m
+[32m+[m
+[32m+[m
+[32m+[m[32m            for (const item of preparedItems) {[m
+[32m+[m
+[32m+[m[32m                insertItem.run([m
+[32m+[m[32m                    saleId,[m
+[32m+[m[32m                    item.productId,[m
+[32m+[m[32m                    locationRow.id,[m
+[32m+[m[32m                    item.quantity,[m
+[32m+[m[32m                    item.unitPrice,[m
+[32m+[m[32m                    item.total,[m
+[32m+[m[32m                    item.purchasePrice,[m
+[32m+[m[32m                    item.displayQuantity,[m
+[32m+[m[32m                    item.displayUnit,[m
+[32m+[m[32m                    item.displayUnitPrice[m
+[32m+[m[32m                );[m
+ [m
+[31m-            insertItem.run([m
+[31m-                saleId,[m
+[31m-                item.productId,[m
+[31m-                locationRow.id,   // location_id[m
+[31m-                item.quantity,[m
+[31m-                item.unitPrice,[m
+[31m-                item.total,       // total_amount[m
+[31m-                item.purchasePrice[m
+[31m-            );[m
+ [m
+ [m
+[31m-            // =========================[m
+[31m-            // DECREASE STOCK[m
+[31m-            // =========================[m
+[32m+[m[32m                // =========================[m
+[32m+[m[32m                // DECREASE STOCK[m
+[32m+[m[32m                // =========================[m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 UPDATE stock[m
+                 SET quantity = quantity - ?[m
+                 WHERE product_id = ?[m
+                   AND location_id = ?[m
+             `).run([m
+ [m
+[31m-                item.quantity,[m
+[32m+[m[32m                    item.quantity,[m
+ [m
+[31m-                item.productId,[m
+[32m+[m[32m                    item.productId,[m
+ [m
+[31m-                locationRow.id[m
+[32m+[m[32m                    locationRow.id[m
+ [m
+[31m-            );[m
+[32m+[m[32m                );[m
+ [m
+ [m
+[31m-            // =========================[m
+[31m-            // STOCK MOVEMENT[m
+[31m-            // =========================[m
+[32m+[m[32m                // =========================[m
+[32m+[m[32m                // STOCK MOVEMENT[m
+[32m+[m[32m                // =========================[m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO stock_movements ([m
+                     product_id,[m
+                     location_id,[m
+[36m@@ -1289,27 +1775,27 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                 )[m
+             `).run([m
+ [m
+[31m-                item.productId,[m
+[32m+[m[32m                    item.productId,[m
+ [m
+[31m-                locationRow.id,[m
+[32m+[m[32m                    locationRow.id,[m
+ [m
+[31m-                -item.quantity,[m
+[32m+[m[32m                    -item.quantity,[m
+ [m
+[31m-                saleId[m
+[32m+[m[32m                    saleId[m
+ [m
+[31m-            );[m
+[32m+[m[32m                );[m
+ [m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+ [m
+[31m-        // =========================[m
+[31m-        // SALE PAYMENT[m
+[31m-        // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // SALE PAYMENT[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        if (paid > 0) {[m
+[32m+[m[32m            if (paid > 0) {[m
+ [m
+[31m-            const cashAccount =[m
+[31m-                db.prepare(`[m
+[32m+[m[32m                const cashAccount =[m
+[32m+[m[32m                    db.prepare(`[m
+                     SELECT id[m
+                     FROM cash_accounts[m
+                     WHERE name = 'الخزنة الرئيسية'[m
+[36m@@ -1317,16 +1803,16 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                 `).get();[m
+ [m
+ [m
+[31m-            if (!cashAccount) {[m
+[32m+[m[32m                if (!cashAccount) {[m
+ [m
+[31m-                throw new Error([m
+[31m-                    "الخزنة الرئيسية غير موجودة"[m
+[31m-                );[m
+[32m+[m[32m                    throw new Error([m
+[32m+[m[32m                        "الخزنة الرئيسية غير موجودة"[m
+[32m+[m[32m                    );[m
+ [m
+[31m-            }[m
+[32m+[m[32m                }[m
+ [m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO sale_payments ([m
+                     sale_id,[m
+                     amount,[m
+[36m@@ -1334,16 +1820,16 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                 )[m
+                 VALUES (?, ?, 'cash')[m
+             `).run([m
+[31m-                saleId,[m
+[31m-                paid[m
+[31m-            );[m
+[32m+[m[32m                    saleId,[m
+[32m+[m[32m                    paid[m
+[32m+[m[32m                );[m
+ [m
+ [m
+[31m-            // =========================[m
+[31m-            // CASH TRANSACTION[m
+[31m-            // =========================[m
+[32m+[m[32m                // =========================[m
+[32m+[m[32m                // CASH TRANSACTION[m
+[32m+[m[32m                // =========================[m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO cash_transactions ([m
+                     cash_account_id,[m
+                     transaction_type,[m
+[36m@@ -1364,28 +1850,28 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                 )[m
+             `).run([m
+ [m
+[31m-                cashAccount.id,[m
+[32m+[m[32m                    cashAccount.id,[m
+ [m
+[31m-                paid,[m
+[32m+[m[32m                    paid,[m
+ [m
+[31m-                saleId,[m
+[32m+[m[32m                    saleId,[m
+ [m
+[31m-                `تحصيل فاتورة بيع ${invoiceNumber}`[m
+[32m+[m[32m                    `تحصيل فاتورة بيع ${invoiceNumber}`[m
+ [m
+[31m-            );[m
+[32m+[m[32m                );[m
+ [m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+ [m
+[31m-        // =========================[m
+[31m-        // =========================[m
+[31m-        // CUSTOMER ACCOUNT[m
+[31m-        // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // CUSTOMER ACCOUNT[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        if (customerId) {[m
+[32m+[m[32m            if (customerId) {[m
+ [m
+[31m-            // فاتورة بيع (مدين للعميل = debit)[m
+[31m-            db.prepare(`[m
+[32m+[m[32m                // فاتورة بيع (مدين للعميل = debit)[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO customer_transactions ([m
+                     customer_id,[m
+                     transaction_type,[m
+[36m@@ -1399,10 +1885,10 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+             `).run(customerId, saleId, grandTotal, `فاتورة بيع ${invoiceNumber}`);[m
+ [m
+ [m
+[31m-            if (paid > 0) {[m
+[32m+[m[32m                if (paid > 0) {[m
+ [m
+[31m-                // دفعة (ائتمان للعميل = credit)[m
+[31m-                db.prepare(`[m
+[32m+[m[32m                    // دفعة (ائتمان للعميل = credit)[m
+[32m+[m[32m                    db.prepare(`[m
+                     INSERT INTO customer_transactions ([m
+                         customer_id,[m
+                         transaction_type,[m
+[36m@@ -1415,127 +1901,127 @@[m [mipcMain.handle("sales:create", (event, sale) => {[m
+                     VALUES (?, 'payment', 'sale', ?, 0, ?, ?)[m
+                 `).run(customerId, saleId, paid, `دفع على فاتورة ${invoiceNumber}`);[m
+ [m
+[31m-            }[m
+[32m+[m[32m                }[m
+ [m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+ [m
+[31m-        // =========================[m
+[31m-        // RESULT[m
+[31m-        // =========================[m
+[32m+[m[32m            // =========================[m
+[32m+[m[32m            // RESULT[m
+[32m+[m[32m            // =========================[m
+ [m
+[31m-        return {[m
+[31m-            success: true,[m
+[31m-            saleId,[m
+[31m-            invoiceNumber,[m
+[31m-            subtotal,[m
+[31m-            plumbingDiscountAmount,[m
+[31m-            total: grandTotal,[m
+[31m-            paid,[m
+[31m-            remaining[m
+[31m-        };[m
+[32m+[m[32m            return {[m
+[32m+[m[32m                success: true,[m
+[32m+[m[32m                saleId,[m
+[32m+[m[32m                invoiceNumber,[m
+[32m+[m[32m                subtotal,[m
+[32m+[m[32m                plumbingDiscountAmount,[m
+[32m+[m[32m                total: grandTotal,[m
+[32m+[m[32m                paid,[m
+[32m+[m[32m                remaining[m
+[32m+[m[32m            };[m
+ [m
+[31m-    });[m
+[32m+[m[32m        });[m
+ [m
+[31m-    return transaction();[m
+[32m+[m[32m        return transaction();[m
+ [m
+[31m-});[m
+[32m+[m[32m    });[m
+ [m
+ [m
+[31m-// =========================[m
+[31m-// CREATE PLUMBING ORDER (طلبيه سباكه للتجار)[m
+[31m-// =========================[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // CREATE PLUMBING ORDER (طلبيه سباكه للتجار)[m
+[32m+[m[32m    // =========================[m
+ [m
+[31m-ipcMain.handle("plumbingOrders:create", (_e, order) => {[m
+[31m-    const transaction = db.transaction(() => {[m
+[32m+[m[32m    ipcMain.handle("plumbingOrders:create", (_e, order) => {[m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+ [m
+[31m-        if (!order || !Array.isArray(order.items) || order.items.length === 0) {[m
+[31m-            throw new Error("يجب إضافة صنف واحد على الأقل للطلبيه");[m
+[31m-        }[m
+[32m+[m[32m            if (!order || !Array.isArray(order.items) || order.items.length === 0) {[m
+[32m+[m[32m                throw new Error("يجب إضافة صنف واحد على الأقل للطلبيه");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        const customerName = order.customer_name?.trim();[m
+[31m-        if (!customerName) throw new Error("اسم التاجر مطلوب لطلبيه السباكه");[m
+[32m+[m[32m            const customerName = order.customer_name?.trim();[m
+[32m+[m[32m            if (!customerName) throw new Error("اسم التاجر مطلوب لطلبيه السباكه");[m
+ [m
+[31m-        const location = order.location === "المخزن" ? "المخزن" : "المعرض";[m
+[31m-        const notes = order.notes?.trim() || null;[m
+[32m+[m[32m            const location = order.location === "المخزن" ? "المخزن" : "المعرض";[m
+[32m+[m[32m            const notes = order.notes?.trim() || null;[m
+ [m
+[31m-        // خصم التاجر الكلي على المجموع[m
+[31m-        const traderDiscountPercent = Math.max(0, Math.min(100, Number(order.trader_discount_percent || 0)));[m
+[32m+[m[32m            // خصم التاجر الكلي على المجموع[m
+[32m+[m[32m            const traderDiscountPercent = Math.max(0, Math.min(100, Number(order.trader_discount_percent || 0)));[m
+ [m
+[31m-        const locationRow = db.prepare(`SELECT id FROM locations WHERE name = ?`).get(location);[m
+[31m-        if (!locationRow) throw new Error("مكان البيع غير موجود");[m
+[32m+[m[32m            const locationRow = db.prepare(`SELECT id FROM locations WHERE name = ?`).get(location);[m
+[32m+[m[32m            if (!locationRow) throw new Error("مكان البيع غير موجود");[m
+ [m
+[31m-        let subtotal = 0;[m
+[31m-        const preparedItems = [];[m
+[32m+[m[32m            let subtotal = 0;[m
+[32m+[m[32m            const preparedItems = [];[m
+ [m
+[31m-        for (const item of order.items) {[m
+[31m-            const productId = Number(item.product_id);[m
+[31m-            const quantity = Number(item.quantity);[m
+[31m-            const unitPrice = Number(item.unit_price);[m
+[32m+[m[32m            for (const item of order.items) {[m
+[32m+[m[32m                const productId = Number(item.product_id);[m
+[32m+[m[32m                const quantity = Number(item.quantity);[m
+[32m+[m[32m                const unitPrice = Number(item.unit_price);[m
+ [m
+[31m-            if (!productId) throw new Error("يوجد صنف غير صحيح");[m
+[31m-            if (!quantity || quantity <= 0) throw new Error("كمية أحد الأصناف غير صحيحة");[m
+[31m-            if (unitPrice < 0 || Number.isNaN(unitPrice)) throw new Error("سعر أحد الأصناف غير صحيح");[m
+[32m+[m[32m                if (!productId) throw new Error("يوجد صنف غير صحيح");[m
+[32m+[m[32m                if (!quantity || quantity <= 0) throw new Error("كمية أحد الأصناف غير صحيحة");[m
+[32m+[m[32m                if (unitPrice < 0 || Number.isNaN(unitPrice)) throw new Error("سعر أحد الأصناف غير صحيح");[m
+ [m
+[31m-            const product = db.prepare(`[m
+[32m+[m[32m                const product = db.prepare(`[m
+                 SELECT p.id, p.name, p.purchase_price, p.sale_price, c.name AS category_name[m
+                 FROM products p[m
+                 LEFT JOIN categories c ON c.id = p.category_id[m
+                 WHERE p.id = ? AND p.is_active = 1[m
+             `).get(productId);[m
+ [m
+[31m-            if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");[m
+[32m+[m[32m                if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");[m
+ [m
+[31m-            // التأكد: كل الأصناف سباكه فقط[m
+[31m-            if (product.category_name !== "سباكة") {[m
+[31m-                throw new Error(`طلبيه سباكه تقبل أصناف سباكه فقط. الصنف "${product.name}" في قسم ${product.category_name} مرفوض`);[m
+[31m-            }[m
+[32m+[m[32m                // التأكد: كل الأصناف سباكه فقط[m
+[32m+[m[32m                if (product.category_name !== "سباكة") {[m
+[32m+[m[32m                    throw new Error(`طلبيه سباكه تقبل أصناف سباكه فقط. الصنف "${product.name}" في قسم ${product.category_name} مرفوض`);[m
+[32m+[m[32m                }[m
+ [m
+[31m-            const stockRow = db.prepare(`[m
+[32m+[m[32m                const stockRow = db.prepare(`[m
+                 SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?[m
+             `).get(productId, locationRow.id);[m
+ [m
+[31m-            const available = Number(stockRow?.quantity || 0);[m
+[31m-            if (quantity > available) {[m
+[31m-                throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);[m
+[32m+[m[32m                const available = Number(stockRow?.quantity || 0);[m
+[32m+[m[32m                if (quantity > available) {[m
+[32m+[m[32m                    throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                const total = quantity * unitPrice;[m
+[32m+[m[32m                subtotal += total;[m
+[32m+[m
+[32m+[m[32m                preparedItems.push({[m
+[32m+[m[32m                    productId,[m
+[32m+[m[32m                    quantity,[m
+[32m+[m[32m                    unitPrice,[m
+[32m+[m[32m                    total,[m
+[32m+[m[32m                    purchasePrice: Number(product.purchase_price || 0)[m
+[32m+[m[32m                });[m
+             }[m
+ [m
+[31m-            const total = quantity * unitPrice;[m
+[31m-            subtotal += total;[m
+[32m+[m[32m            // خصم التاجر (كلي)[m
+[32m+[m[32m            const traderDiscountAmount = subtotal * traderDiscountPercent / 100;[m
+[32m+[m[32m            const grandTotal = subtotal - traderDiscountAmount;[m
+ [m
+[31m-            preparedItems.push({[m
+[31m-                productId,[m
+[31m-                quantity,[m
+[31m-                unitPrice,[m
+[31m-                total,[m
+[31m-                purchasePrice: Number(product.purchase_price || 0)[m
+[31m-            });[m
+[31m-        }[m
+[32m+[m[32m            const paid = Math.max(0, Number(order.paid || 0));[m
+[32m+[m[32m            if (paid > grandTotal) throw new Error("المبلغ المدفوع أكبر من إجمالي طلبيه السباكه");[m
+[32m+[m[32m            const remaining = grandTotal - paid;[m
+[32m+[m[32m            const saleType = remaining > 0 ? "credit" : "cash";[m
+ [m
+[31m-        // خصم التاجر (كلي)[m
+[31m-        const traderDiscountAmount = subtotal * traderDiscountPercent / 100;[m
+[31m-        const grandTotal = subtotal - traderDiscountAmount;[m
+[31m-[m
+[31m-        const paid = Math.max(0, Number(order.paid || 0));[m
+[31m-        if (paid > grandTotal) throw new Error("المبلغ المدفوع أكبر من إجمالي طلبيه السباكه");[m
+[31m-        const remaining = grandTotal - paid;[m
+[31m-        const saleType = remaining > 0 ? "credit" : "cash";[m
+[31m-[m
+[31m-        // العميل/التاجر[m
+[31m-        let customerId = null;[m
+[31m-        const existingCustomer = db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);[m
+[31m-        if (existingCustomer) {[m
+[31m-            customerId = existingCustomer.id;[m
+[31m-        } else {[m
+[31m-            const nc = db.prepare(`INSERT INTO customers (name, is_active) VALUES (?, 1)`).run(customerName);[m
+[31m-            customerId = nc.lastInsertRowid;[m
+[31m-        }[m
+[32m+[m[32m            // العميل/التاجر[m
+[32m+[m[32m            let customerId = null;[m
+[32m+[m[32m            const existingCustomer = db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);[m
+[32m+[m[32m            if (existingCustomer) {[m
+[32m+[m[32m                customerId = existingCustomer.id;[m
+[32m+[m[32m            } else {[m
+[32m+[m[32m                const nc = db.prepare(`INSERT INTO customers (name, is_active) VALUES (?, 1)`).run(customerName);[m
+[32m+[m[32m                customerId = nc.lastInsertRowid;[m
+[32m+[m[32m            }[m
+ [m
+[31m-        const nextSaleId = db.prepare([m
+[31m-            "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM sales"[m
+[31m-        ).get().nextId;[m
+[31m-        const invoiceNumber = `P-${String(nextSaleId).padStart(6, "0")}`;[m
+[31m-        const saleResult = db.prepare(`[m
+[32m+[m[32m            const nextSaleId = db.prepare([m
+[32m+[m[32m                "SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM sales"[m
+[32m+[m[32m            ).get().nextId;[m
+[32m+[m[32m            const invoiceNumber = `P-${String(nextSaleId).padStart(6, "0")}`;[m
+[32m+[m[32m            const saleResult = db.prepare(`[m
+             INSERT INTO sales ([m
+                 invoice_number,[m
+                 customer_id,[m
+[36m@@ -1552,234 +2038,250 @@[m [mipcMain.handle("plumbingOrders:create", (_e, order) => {[m
+             )[m
+             VALUES (?, ?, ?, 'plumbing_order', ?, ?, ?, ?, ?, ?, ?, 'completed')[m
+         `).run([m
+[31m-            invoiceNumber,[m
+[31m-            customerId,[m
+[31m-            locationRow.id,[m
+[31m-            subtotal,[m
+[31m-            traderDiscountPercent,[m
+[31m-            traderDiscountAmount,[m
+[31m-            grandTotal,[m
+[31m-            paid,[m
+[31m-            remaining,[m
+[31m-            notes[m
+[31m-        );[m
+[31m-[m
+[31m-        const saleId = saleResult.lastInsertRowid;[m
+[31m-[m
+[31m-        // الأصناف + المخزون[m
+[31m-        const insertItem = db.prepare(`[m
+[32m+[m[32m                invoiceNumber,[m
+[32m+[m[32m                customerId,[m
+[32m+[m[32m                locationRow.id,[m
+[32m+[m[32m                subtotal,[m
+[32m+[m[32m                traderDiscountPercent,[m
+[32m+[m[32m                traderDiscountAmount,[m
+[32m+[m[32m                grandTotal,[m
+[32m+[m[32m                paid,[m
+[32m+[m[32m                remaining,[m
+[32m+[m[32m                notes[m
+[32m+[m[32m            );[m
+[32m+[m
+[32m+[m[32m            const saleId = saleResult.lastInsertRowid;[m
+[32m+[m
+[32m+[m[32m            // الأصناف + المخزون[m
+[32m+[m[32m            const insertItem = db.prepare(`[m
+             INSERT INTO sale_items (sale_id, product_id, location_id, quantity, unit_price, total_amount, purchase_price)[m
+             VALUES (?, ?, ?, ?, ?, ?, ?)[m
+         `);[m
+[31m-        for (const item of preparedItems) {[m
+[31m-            insertItem.run(saleId, item.productId, locationRow.id, item.quantity, item.unitPrice, item.total, item.purchasePrice);[m
+[32m+[m[32m            for (const item of preparedItems) {[m
+[32m+[m[32m                insertItem.run(saleId, item.productId, locationRow.id, item.quantity, item.unitPrice, item.total, item.purchasePrice);[m
+ [m
+[31m-            db.prepare(`UPDATE stock SET quantity = quantity - ? WHERE product_id = ? AND location_id = ?`)[m
+[31m-                .run(item.quantity, item.productId, locationRow.id);[m
+[32m+[m[32m                db.prepare(`UPDATE stock SET quantity = quantity - ? WHERE product_id = ? AND location_id = ?`)[m
+[32m+[m[32m                    .run(item.quantity, item.productId, locationRow.id);[m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO stock_movements[m
+                     (product_id, location_id, movement_type, quantity, reference_type, reference_id)[m
+                 VALUES (?, ?, 'sale', ?, 'sale', ?)[m
+             `).run(item.productId, locationRow.id, -item.quantity, saleId);[m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // المدفوعات + الخزنة[m
+[31m-        if (paid > 0) {[m
+[31m-            const cashAccount = db.prepare(`SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' LIMIT 1`).get();[m
+[31m-            if (!cashAccount) throw new Error("الخزنة الرئيسية غير موجودة");[m
+[32m+[m[32m            // المدفوعات + الخزنة[m
+[32m+[m[32m            if (paid > 0) {[m
+[32m+[m[32m                const cashAccount = db.prepare(`SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' LIMIT 1`).get();[m
+[32m+[m[32m                if (!cashAccount) throw new Error("الخزنة الرئيسية غير موجودة");[m
+ [m
+[31m-            db.prepare(`INSERT INTO sale_payments (sale_id, amount, payment_method) VALUES (?, ?, 'cash')`).run(saleId, paid);[m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`INSERT INTO sale_payments (sale_id, amount, payment_method) VALUES (?, ?, 'cash')`).run(saleId, paid);[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO cash_transactions[m
+                     (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description)[m
+                 VALUES (?, 'sale', 'in', ?, 'sale', ?, ?)[m
+             `).run(cashAccount.id, paid, saleId, `تحصيل طلبيه سباكه ${invoiceNumber}`);[m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // حسابات التاجر[m
+[31m-        db.prepare(`[m
+[32m+[m[32m            // حسابات التاجر[m
+[32m+[m[32m            db.prepare(`[m
+             INSERT INTO customer_transactions[m
+                 (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes)[m
+             VALUES (?, 'sale', 'sale', ?, ?, 0, ?)[m
+         `).run(customerId, saleId, grandTotal, `طلبيه سباكه ${invoiceNumber}`);[m
+ [m
+[31m-        if (paid > 0) {[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            if (paid > 0) {[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO customer_transactions[m
+                     (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes)[m
+                 VALUES (?, 'payment', 'sale', ?, 0, ?, ?)[m
+             `).run(customerId, saleId, paid, `دفع على طلبيه ${invoiceNumber}`);[m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+[31m-        return {[m
+[31m-            success: true,[m
+[31m-            saleId,[m
+[31m-            invoiceNumber,[m
+[31m-            subtotal,[m
+[31m-            traderDiscountAmount,[m
+[31m-            total: grandTotal,[m
+[31m-            paid,[m
+[31m-            remaining[m
+[31m-        };[m
+[32m+[m[32m            return {[m
+[32m+[m[32m                success: true,[m
+[32m+[m[32m                saleId,[m
+[32m+[m[32m                invoiceNumber,[m
+[32m+[m[32m                subtotal,[m
+[32m+[m[32m                traderDiscountAmount,[m
+[32m+[m[32m                total: grandTotal,[m
+[32m+[m[32m                paid,[m
+[32m+[m[32m                remaining[m
+[32m+[m[32m            };[m
+[32m+[m[32m        });[m
+[32m+[m
+[32m+[m[32m        return transaction();[m
+     });[m
+ [m
+[31m-    return transaction();[m
+[31m-});[m
+ [m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // UPDATE SALE (تعديل فاتورة مبيعات أو طلبيه سباكه)[m
+[32m+[m[32m    // =========================[m
+[32m+[m[32m    // منطق التعديل: نرجع كل شيء قديم (مخزون + حركات + مدفوعات) ثم نعيد إنشاؤه من جديد[m
+[32m+[m[32m    // مع الحفاظ على رقم الفاتورة والتاريخ الأصلي[m
+ [m
+[31m-// =========================[m
+[31m-// UPDATE SALE (تعديل فاتورة مبيعات أو طلبيه سباكه)[m
+[31m-// =========================[m
+[31m-// منطق التعديل: نرجع كل شيء قديم (مخزون + حركات + مدفوعات) ثم نعيد إنشاؤه من جديد[m
+[31m-// مع الحفاظ على رقم الفاتورة والتاريخ الأصلي[m
+[31m-[m
+[31m-ipcMain.handle("sales:update", (_e, saleId, sale) => {[m
+[31m-    const transaction = db.transaction(() => {[m
+[31m-        saleId = Number(saleId);[m
+[32m+[m[32m    ipcMain.handle("sales:update", (_e, saleId, sale) => {[m
+[32m+[m[32m        const transaction = db.transaction(() => {[m
+[32m+[m[32m            saleId = Number(saleId);[m
+ [m
+[31m-        // تحميل الفاتورة القديمة[m
+[31m-        const oldSale = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(saleId);[m
+[31m-        if (!oldSale) throw new Error("الفاتورة غير موجودة");[m
+[32m+[m[32m            // تحميل الفاتورة القديمة[m
+[32m+[m[32m            const oldSale = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(saleId);[m
+[32m+[m[32m            if (!oldSale) throw new Error("الفاتورة غير موجودة");[m
+[32m+[m[32m            if (db.prepare("SELECT 1 FROM sales_returns WHERE sale_id = ? LIMIT 1").get(saleId)) {[m
+[32m+[m[32m                throw new Error("لا يمكن تعديل الفاتورة لوجود مرتجع مرتبط بها");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // تحميل الأصناف القديمة[m
+[31m-        const oldItems = db.prepare(`SELECT * FROM sale_items WHERE sale_id = ?`).all(saleId);[m
+[32m+[m[32m            // تحميل الأصناف القديمة[m
+[32m+[m[32m            const oldItems = db.prepare(`SELECT * FROM sale_items WHERE sale_id = ?`).all(saleId);[m
+ [m
+[31m-        // ============================================[m
+[31m-        // STEP 1: ROLLBACK (ارجاع المخزون القديم)[m
+[31m-        // ============================================[m
+[31m-        for (const it of oldItems) {[m
+[31m-            // ارجاع الكمية للمخزون[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 1: ROLLBACK (ارجاع المخزون القديم)[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            for (const it of oldItems) {[m
+[32m+[m[32m                // ارجاع الكمية للمخزون[m
+[32m+[m[32m                db.prepare(`[m
+                 UPDATE stock SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP[m
+                 WHERE product_id = ? AND location_id = ?[m
+             `).run(it.quantity, it.product_id, it.location_id);[m
+ [m
+[31m-            // حركة مخزون عكسية (إرجاع)[m
+[31m-            db.prepare(`[m
+[32m+[m[32m                // حركة مخزون عكسية (إرجاع)[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO stock_movements[m
+                     (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)[m
+                 VALUES (?, ?, 'return', ?, 'sale', ?, ?)[m
+             `).run(it.product_id, it.location_id, it.quantity, saleId, "تعديل فاتورة - إرجاع الكمية القديمة");[m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // ============================================[m
+[31m-        // STEP 2: مسح السجلات الثانوية القديمة[m
+[31m-        // ============================================[m
+[31m-        db.prepare(`DELETE FROM sale_items WHERE sale_id = ?`).run(saleId);[m
+[31m-        db.prepare(`DELETE FROM sale_payments WHERE sale_id = ?`).run(saleId);[m
+[31m-        db.prepare(`DELETE FROM customer_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);[m
+[31m-        db.prepare(`DELETE FROM cash_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);[m
+[31m-[m
+[31m-        // ============================================[m
+[31m-        // STEP 3: حساب الفاتورة الجديدة وإعادة تطبيقها[m
+[31m-        // (هذا الكود مكافئ لإنشاء فاتورة جديد لكنه يحدث وليس ينشئ)[m
+[31m-        // ============================================[m
+[31m-        const isPlumbingOrder = oldSale.sale_type === "plumbing_order";[m
+[31m-[m
+[31m-        if (!sale || !Array.isArray(sale.items) || sale.items.length === 0) {[m
+[31m-            throw new Error("يجب إضافة صنف واحد على الأقل للفاتورة");[m
+[31m-        }[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 2: مسح السجلات الثانوية القديمة[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            db.prepare(`DELETE FROM sale_items WHERE sale_id = ?`).run(saleId);[m
+[32m+[m[32m            db.prepare(`DELETE FROM sale_payments WHERE sale_id = ?`).run(saleId);[m
+[32m+[m[32m            db.prepare(`DELETE FROM customer_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);[m
+[32m+[m[32m            db.prepare(`DELETE FROM cash_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);[m
+[32m+[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 3: حساب الفاتورة الجديدة وإعادة تطبيقها[m
+[32m+[m[32m            // (هذا الكود مكافئ لإنشاء فاتورة جديد لكنه يحدث وليس ينشئ)[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            const isPlumbingOrder = oldSale.sale_type === "plumbing_order";[m
+[32m+[m
+[32m+[m[32m            if (!sale || !Array.isArray(sale.items) || sale.items.length === 0) {[m
+[32m+[m[32m                throw new Error("يجب إضافة صنف واحد على الأقل للفاتورة");[m
+[32m+[m[32m            }[m
+ [m
+[31m-        const location = sale.location === "المخزن" ? "المخزن" : "المعرض";[m
+[31m-        const customerName = sale.customer_name?.trim() || null;[m
+[31m-        const notes = sale.notes?.trim() || null;[m
+[32m+[m[32m            const location = sale.location === "المخزن" ? "المخزن" : "المعرض";[m
+[32m+[m[32m            const customerName = sale.customer_name?.trim() || null;[m
+[32m+[m[32m            const notes = sale.notes?.trim() || null;[m
+ [m
+[31m-        // خصم طلبيه السباكه (كلي) أو خصم سباكة فواتير عادية (للأصناف)[m
+[31m-        const traderDiscountPercent = Math.max(0, Math.min(100, Number(sale.trader_discount_percent || 0)));[m
+[31m-        const plumbingDiscountPercent = Math.max(0, Math.min(100, Number(sale.plumbing_discount_percent || 0)));[m
+[32m+[m[32m            // خصم طلبيه السباكه (كلي) أو خصم سباكة فواتير عادية (للأصناف)[m
+[32m+[m[32m            const traderDiscountPercent = Math.max(0, Math.min(100, Number(sale.trader_discount_percent || 0)));[m
+[32m+[m[32m            const plumbingDiscountPercent = Math.max(0, Math.min(100, Number(sale.plumbing_discount_percent || 0)));[m
+ [m
+[31m-        const locationRow = db.prepare(`SELECT id FROM locations WHERE name = ?`).get(location);[m
+[31m-        if (!locationRow) throw new Error("مكان البيع غير موجود");[m
+[32m+[m[32m            const locationRow = db.prepare(`SELECT id FROM locations WHERE name = ?`).get(location);[m
+[32m+[m[32m            if (!locationRow) throw new Error("مكان البيع غير موجود");[m
+ [m
+[31m-        let subtotal = 0;[m
+[31m-        let plumbingSubtotal = 0;[m
+[31m-        const preparedItems = [];[m
+[32m+[m[32m            let subtotal = 0;[m
+[32m+[m[32m            let plumbingSubtotal = 0;[m
+[32m+[m[32m            const preparedItems = [];[m
+ [m
+[31m-        for (const item of sale.items) {[m
+[31m-            const productId = Number(item.product_id);[m
+[31m-            const quantity = Number(item.quantity);[m
+[31m-            const unitPrice = Number(item.unit_price);[m
+[32m+[m[32m            for (const item of sale.items) {[m
+[32m+[m[32m                const productId = Number(item.product_id);[m
+[32m+[m[32m                const quantity = Number(item.quantity);[m
+[32m+[m[32m                const unitPrice = Number(item.unit_price);[m
+ [m
+[31m-            if (!productId) throw new Error("يوجد صنف غير صحيح");[m
+[31m-            if (!quantity || quantity <= 0) throw new Error("كمية أحد الأصناف غير صحيحة");[m
+[31m-            if (unitPrice < 0 || Number.isNaN(unitPrice)) throw new Error("سعر أحد الأصناف غير صحيح");[m
+[32m+[m[32m                if (!productId) throw new Error("يوجد صنف غير صحيح");[m
+[32m+[m[32m                if (!quantity || quantity <= 0) throw new Error("كمية أحد الأصناف غير صحيحة");[m
+[32m+[m[32m                if (unitPrice < 0 || Number.isNaN(unitPrice)) throw new Error("سعر أحد الأصناف غير صحيح");[m
+ [m
+[31m-            const product = db.prepare(`[m
+[32m+[m[32m                const product = db.prepare(`[m
+                 SELECT p.id, p.name, p.purchase_price, c.name AS category_name[m
+                 FROM products p[m
+                 LEFT JOIN categories c ON c.id = p.category_id[m
+                 WHERE p.id = ? AND p.is_active = 1[m
+             `).get(productId);[m
+ [m
+[31m-            if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");[m
+[32m+[m[32m                if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");[m
+ [m
+[31m-            // إذا كانت طلبيه سباكه: أصناف سباكه فقط[m
+[31m-            if (isPlumbingOrder && product.category_name !== "سباكة") {[m
+[31m-                throw new Error(`طلبيه سباكه تقبل أصناف سباكه فقط. الصنف "${product.name}" مرفوض`);[m
+[31m-            }[m
+[32m+[m[32m                // إذا كانت طلبيه سباكه: أصناف سباكه فقط[m
+[32m+[m[32m                if (isPlumbingOrder && product.category_name !== "سباكة") {[m
+[32m+[m[32m                    throw new Error(`طلبيه سباكه تقبل أصناف سباكه فقط. الصنف "${product.name}" مرفوض`);[m
+[32m+[m[32m                }[m
+ [m
+[31m-            const stockRow = db.prepare(`[m
+[32m+[m[32m                const stockRow = db.prepare(`[m
+                 SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?[m
+             `).get(productId, locationRow.id);[m
+ [m
+[31m-            const available = Number(stockRow?.quantity || 0);[m
+[31m-            if (quantity > available) {[m
+[31m-                throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);[m
+[31m-            }[m
+[32m+[m[32m                const available = Number(stockRow?.quantity || 0);[m
+[32m+[m[32m                if (quantity > available) {[m
+[32m+[m[32m                    throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${location}`);[m
+[32m+[m[32m                }[m
+ [m
+[31m-            const total = quantity * unitPrice;[m
+[31m-            subtotal += total;[m
+[32m+[m[32m                const total = quantity * unitPrice;[m
+[32m+[m[32m                subtotal += total;[m
+ [m
+[31m-            if (product.category_name === "سباكة") {[m
+[31m-                plumbingSubtotal += total;[m
+[31m-            }[m
+[32m+[m[32m                if (product.category_name === "سباكة") {[m
+[32m+[m[32m                    plumbingSubtotal += total;[m
+[32m+[m[32m                }[m
+ [m
+[31m-            preparedItems.push({[m
+[31m-                productId,[m
+[31m-                quantity,[m
+[31m-                unitPrice,[m
+[31m-                total,[m
+[31m-                purchasePrice: Number(product.purchase_price || 0)[m
+[31m-            });[m
+[31m-        }[m
+[32m+[m[32m                const displayQuantity = Number([m
+[32m+[m[32m    item.display_quantity ?? item.displayQuantity ?? quantity[m
+[32m+[m[32m);[m
+[32m+[m[32mconst displayUnit =[m
+[32m+[m[32m    String(item.display_unit ?? item.displayUnit ?? "").trim() || null;[m
+[32m+[m[32mconst displayUnitPrice = Number([m
+[32m+[m[32m    item.display_unit_price ?? item.displayUnitPrice ?? unitPrice[m
+[32m+[m[32m);[m
+ [m
+[31m-        // حساب الإجمالي النهائي حسب نوع الفاتورة[m
+[31m-        let grandTotal;[m
+[31m-        let traderDiscountAmount = 0;[m
+[31m-        let plumbingDiscountAmount = 0;[m
+[31m-[m
+[31m-        if (isPlumbingOrder) {[m
+[31m-            // خصم تاجر كلي[m
+[31m-            traderDiscountAmount = subtotal * traderDiscountPercent / 100;[m
+[31m-            grandTotal = subtotal - traderDiscountAmount;[m
+[31m-        } else {[m
+[31m-            // خصم سباكة على أصناف السباكه[m
+[31m-            plumbingDiscountAmount = plumbingSubtotal * plumbingDiscountPercent / 100;[m
+[31m-            grandTotal = subtotal - plumbingDiscountAmount;[m
+[31m-        }[m
+[32m+[m[32mpreparedItems.push({[m
+[32m+[m[32m    productId,[m
+[32m+[m[32m    quantity,[m
+[32m+[m[32m    unitPrice,[m
+[32m+[m[32m    total,[m
+[32m+[m[32m    displayQuantity,[m
+[32m+[m[32m    displayUnit,[m
+[32m+[m[32m    displayUnitPrice,[m
+[32m+[m[32m    purchasePrice: Number(product.purchase_price || 0)[m
+[32m+[m[32m});[m
+ [m
+[31m-        const paid = Math.max(0, Number(sale.paid || 0));[m
+[31m-        if (paid > grandTotal) throw new Error("المبلغ المدفوع أكبر من إجمالي الفاتورة");[m
+[31m-        const remaining = grandTotal - paid;[m
+[31m-        const saleType = remaining > 0 ? (isPlumbingOrder ? "plumbing_order" : "credit") : (isPlumbingOrder ? "plumbing_order" : "cash");[m
+[31m-[m
+[31m-        // العميل / التاجر (إذا وجد)[m
+[31m-        let customerId = null;[m
+[31m-        if (customerName) {[m
+[31m-            const ec = db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);[m
+[31m-            if (ec) {[m
+[31m-                customerId = ec.id;[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            // حساب الإجمالي النهائي حسب نوع الفاتورة[m
+[32m+[m[32m            let grandTotal;[m
+[32m+[m[32m            let traderDiscountAmount = 0;[m
+[32m+[m[32m            let plumbingDiscountAmount = 0;[m
+[32m+[m
+[32m+[m[32m            if (isPlumbingOrder) {[m
+[32m+[m[32m                // خصم تاجر كلي[m
+[32m+[m[32m                traderDiscountAmount = subtotal * traderDiscountPercent / 100;[m
+[32m+[m[32m                grandTotal = subtotal - traderDiscountAmount;[m
+             } else {[m
+[31m-                const nc = db.prepare(`INSERT INTO customers (name, is_active) VALUES (?, 1)`).run(customerName);[m
+[31m-                customerId = nc.lastInsertRowid;[m
+[32m+[m[32m                // خصم سباكة على أصناف السباكه[m
+[32m+[m[32m                plumbingDiscountAmount = plumbingSubtotal * plumbingDiscountPercent / 100;[m
+[32m+[m[32m                grandTotal = subtotal - plumbingDiscountAmount;[m
+             }[m
+[31m-        }[m
+ [m
+[31m-        // ============================================[m
+[31m-        // STEP 4: UPDATE sales header (بالاحتفاظ بالرقم الأصلي والتاريخ الأصلي)[m
+[31m-        // ============================================[m
+[31m-        db.prepare(`[m
+[32m+[m[32m            const paid = Math.max(0, Number(sale.paid || 0));[m
+[32m+[m[32m            if (paid > grandTotal) throw new Error("المبلغ المدفوع أكبر من إجمالي الفاتورة");[m
+[32m+[m[32m            const remaining = grandTotal - paid;[m
+[32m+[m[32m            const saleType = remaining > 0 ? (isPlumbingOrder ? "plumbing_order" : "credit") : (isPlumbingOrder ? "plumbing_order" : "cash");[m
+[32m+[m
+[32m+[m[32m            // العميل / التاجر (إذا وجد)[m
+[32m+[m[32m            let customerId = null;[m
+[32m+[m[32m            if (customerName) {[m
+[32m+[m[32m                const ec = db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);[m
+[32m+[m[32m                if (ec) {[m
+[32m+[m[32m                    customerId = ec.id;[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    const nc = db.prepare(`INSERT INTO customers (name, is_active) VALUES (?, 1)`).run(customerName);[m
+[32m+[m[32m                    customerId = nc.lastInsertRowid;[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 4: UPDATE sales header (بالاحتفاظ بالرقم الأصلي والتاريخ الأصلي)[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            db.prepare(`[m
+             UPDATE sales SET[m
+                 customer_id = ?,[m
+                 location_id = ?,[m
+[36m@@ -1797,93 +2299,116 @@[m [mipcMain.handle("sales:update", (_e, saleId, sale) => {[m
+                 updated_at = CURRENT_TIMESTAMP[m
+             WHERE id = ?[m
+         `).run([m
+[31m-            customerId,[m
+[31m-            locationRow.id,[m
+[31m-            saleType,[m
+[31m-            subtotal,[m
+[31m-            isPlumbingOrder ? 0 : plumbingDiscountPercent,[m
+[31m-            isPlumbingOrder ? 0 : plumbingDiscountAmount,[m
+[31m-            isPlumbingOrder ? traderDiscountPercent : 0,[m
+[31m-            isPlumbingOrder ? traderDiscountAmount : 0,[m
+[31m-            grandTotal,[m
+[31m-            paid,[m
+[31m-            remaining,[m
+[31m-            notes,[m
+[31m-            saleId[m
+[31m-        );[m
+[31m-[m
+[31m-        const invoiceNumber = oldSale.invoice_number;[m
+[31m-[m
+[31m-        // ============================================[m
+[31m-        // STEP 5: إدراج الأصناف الجديدة + خصم المخزون[m
+[31m-        // ============================================[m
+[31m-        const insertItem = db.prepare(`[m
+[31m-            INSERT INTO sale_items[m
+[31m-                (sale_id, product_id, location_id, quantity, unit_price, total_amount, purchase_price)[m
+[31m-            VALUES (?, ?, ?, ?, ?, ?, ?)[m
+[32m+[m[32m                customerId,[m
+[32m+[m[32m                locationRow.id,[m
+[32m+[m[32m                saleType,[m
+[32m+[m[32m                subtotal,[m
+[32m+[m[32m                isPlumbingOrder ? 0 : plumbingDiscountPercent,[m
+[32m+[m[32m                isPlumbingOrder ? 0 : plumbingDiscountAmount,[m
+[32m+[m[32m                isPlumbingOrder ? traderDiscountPercent : 0,[m
+[32m+[m[32m                isPlumbingOrder ? traderDiscountAmount : 0,[m
+[32m+[m[32m                grandTotal,[m
+[32m+[m[32m                paid,[m
+[32m+[m[32m                remaining,[m
+[32m+[m[32m                notes,[m
+[32m+[m[32m                saleId[m
+[32m+[m[32m            );[m
+[32m+[m
+[32m+[m[32m            const invoiceNumber = oldSale.invoice_number;[m
+[32m+[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 5: إدراج الأصناف الجديدة + خصم المخزون[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            const insertItem = db.prepare(`[m
+[32m+[m[32m    INSERT INTO sale_items ([m
+[32m+[m[32m        sale_id,[m
+[32m+[m[32m        product_id,[m
+[32m+[m[32m        location_id,[m
+[32m+[m[32m        quantity,[m
+[32m+[m[32m        unit_price,[m
+[32m+[m[32m        total_amount,[m
+[32m+[m[32m        purchase_price,[m
+[32m+[m[32m        display_quantity,[m
+[32m+[m[32m        display_unit,[m
+[32m+[m[32m        display_unit_price[m
+[32m+[m[32m    )[m
+[32m+[m[32m    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)[m
+[32m+[m
+[32m+[m
+         `);[m
+[31m-        for (const item of preparedItems) {[m
+[31m-            insertItem.run(saleId, item.productId, locationRow.id, item.quantity, item.unitPrice, item.total, item.purchasePrice);[m
+[32m+[m[32m            for (const item of preparedItems) {[m
+[32m+[m[32minsertItem.run([m
+[32m+[m[32m    saleId,[m
+[32m+[m[32m    item.productId,[m
+[32m+[m[32m    locationRow.id,[m
+[32m+[m[32m    item.quantity,[m
+[32m+[m[32m    item.unitPrice,[m
+[32m+[m[32m    item.total,[m
+[32m+[m[32m    item.purchasePrice,[m
+[32m+[m[32m    item.displayQuantity,[m
+[32m+[m[32m    item.displayUnit,[m
+[32m+[m[32m    item.displayUnitPrice[m
+[32m+[m[32m);[m
+ [m
+[31m-            db.prepare(`UPDATE stock SET quantity = quantity - ? WHERE product_id = ? AND location_id = ?`)[m
+[31m-                .run(item.quantity, item.productId, locationRow.id);[m
+[32m+[m[32m                db.prepare(`UPDATE stock SET quantity = quantity - ? WHERE product_id = ? AND location_id = ?`)[m
+[32m+[m[32m                    .run(item.quantity, item.productId, locationRow.id);[m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO stock_movements[m
+                     (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes)[m
+                 VALUES (?, ?, 'sale', ?, 'sale', ?, ?)[m
+             `).run(item.productId, locationRow.id, -item.quantity, saleId, "تعديل فاتورة - خصم الأصناف الجديدة");[m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // ============================================[m
+[31m-        // STEP 6: مدفوعات + خزنة[m
+[31m-        // ============================================[m
+[31m-        if (paid > 0) {[m
+[31m-            const cashAccount = db.prepare(`SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' LIMIT 1`).get();[m
+[31m-            if (!cashAccount) throw new Error("الخزنة الرئيسية غير موجودة");[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 6: مدفوعات + خزنة[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            if (paid > 0) {[m
+[32m+[m[32m                const cashAccount = db.prepare(`SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' LIMIT 1`).get();[m
+[32m+[m[32m                if (!cashAccount) throw new Error("الخزنة الرئيسية غير موجودة");[m
+ [m
+[31m-            db.prepare(`INSERT INTO sale_payments (sale_id, amount, payment_method) VALUES (?, ?, 'cash')`)[m
+[31m-                .run(saleId, paid);[m
+[32m+[m[32m                db.prepare(`INSERT INTO sale_payments (sale_id, amount, payment_method) VALUES (?, ?, 'cash')`)[m
+[32m+[m[32m                    .run(saleId, paid);[m
+ [m
+[31m-            db.prepare(`[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO cash_transactions[m
+                     (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description)[m
+                 VALUES (?, 'sale', 'in', ?, 'sale', ?, ?)[m
+             `).run(cashAccount.id, paid, saleId, `تحصيل فاتورة ${invoiceNumber} (بعد تعديل)`);[m
+[31m-        }[m
+[32m+[m[32m            }[m
+ [m
+[31m-        // ============================================[m
+[31m-        // STEP 7: حساب العميل[m
+[31m-        // ============================================[m
+[31m-        if (customerId) {[m
+[31m-            db.prepare(`[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            // STEP 7: حساب العميل[m
+[32m+[m[32m            // ============================================[m
+[32m+[m[32m            if (customerId) {[m
+[32m+[m[32m                db.prepare(`[m
+                 INSERT INTO customer_transactions[m
+                     (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes)[m
+                 VALUES (?, 'sale', 'sale', ?, ?, 0, ?)[m
+             `).run(customerId, saleId, grandTotal, `فاتورة ${invoiceNumber} (بعد تعديل)`);[m
+ [m
+[31m-            if (paid > 0) {[m
+[31m-                db.prepare(`[m
+[32m+[m[32m                if (paid > 0) {[m
+[32m+[m[32m                    db.prepare(`[m
+                     INSERT INTO customer_transactions[m
+                         (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes)[m
+                     VALUES (?, 'payment', 'sale', ?, 0, ?, ?)[m
+                 `).run(customerId, saleId, paid, `دفع على فاتورة ${invoiceNumber} (بعد تعديل)`);[m
+[32m+[m[32m                }[m
+             }[m
+[31m-        }[m
+ [m
+[31m-        return {[m
+[31m-            success: true,[m
+[31m-            saleId,[m
+[31m-            invoiceNumber,[m
+[31m-            subtotal,[m
+[31m-            total: grandTotal,[m
+[31m-            paid,[m
+[31m-            remaining[m
+[31m-        };[m
+[31m-    });[m
+[32m+[m[32m            return {[m
+[32m+[m[32m                success: true,[m
+[32m+[m[32m                saleId,[m
+[32m+[m[32m                invoiceNumber,[m
+[32m+[m[32m                subtotal,[m
+[32m+[m[32m                total: grandTotal,[m
+[32m+[m[32m                paid,[m
+[32m+[m[32m                remaining[m
+[32m+[m[32m            };[m
+[32m+[m[32m        });[m
+ [m
+[31m-    return transaction();[m
+[31m-});[m
+[32m+[m[32m        return transaction();[m
+[32m+[m[32m    });[m
+ [m
+ }[m
+ [m
+[36m@@ -2022,4 +2547,4 @@[m [mapp.on([m
+     }[m
+ );[m
+ [m
+[31m-module.exports = { initializeBackend };[m
+[32m+[m[32mmodule.exports = { initializeBackend };[m
+\ No newline at end of file[m
+[1mdiff --git a/src/preload.js b/src/preload.js[m
+[1mindex 439a9eb..d3f6ddf 100644[m
+[1m--- a/src/preload.js[m
+[1m+++ b/src/preload.js[m
+[36m@@ -48,8 +48,8 @@[m [mcontextBridge.exposeInMainWorld("elSharq", {[m
+         ipcRenderer.invoke("productSets:setActive", id, active),[m
+ [m
+     // ====== المبيعات (الفواتير) ======[m
+[31m-    getSales: (filter) =>[m
+[31m-        ipcRenderer.invoke("sales:getAll", filter),[m
+[32m+[m[32m    getSales: (filter, searchTerm = "") =>[m
+[32m+[m[32m        ipcRenderer.invoke("sales:getAll", filter, searchTerm),[m
+ [m
+     getSaleById: (id) =>[m
+         ipcRenderer.invoke("sales:getById", id),[m
+[36m@@ -63,6 +63,9 @@[m [mcontextBridge.exposeInMainWorld("elSharq", {[m
+     deleteSale: (id, password) =>[m
+         ipcRenderer.invoke("sales:delete", id, password),[m
+ [m
+[32m+[m[32m    createSaleReturn: (id, payload) =>[m
+[32m+[m[32m        ipcRenderer.invoke("sales:return:create", id, payload),[m
+[32m+[m
+     // ====== طلبيه سباكه للتجار ======[m
+     createPlumbingOrder: (order) =>[m
+         ipcRenderer.invoke("plumbingOrders:create", order),[m

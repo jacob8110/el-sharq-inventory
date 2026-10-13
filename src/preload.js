@@ -48,8 +48,16 @@ contextBridge.exposeInMainWorld("elSharq", {
         ipcRenderer.invoke("productSets:setActive", id, active),
 
     // ====== المبيعات (الفواتير) ======
-    getSales: (filter) =>
-        ipcRenderer.invoke("sales:getAll", filter),
+    // worker-payroll-api-v1
+    // ====== العمال والرواتب ======
+    getWorkers: () => ipcRenderer.invoke("workers:getAll"),
+    getWorkerLedger: (id) => ipcRenderer.invoke("workers:getLedger", id),
+    createWorker: (payload) => ipcRenderer.invoke("workers:create", payload),
+    updateWorker: (id, payload) => ipcRenderer.invoke("workers:update", id, payload),
+    addWorkerAdvance: (id, amount, notes) => ipcRenderer.invoke("workers:addAdvance", id, amount, notes),
+    payWorkerSalaryCycle: (cycleId) => ipcRenderer.invoke("workers:payCycle", cycleId),
+    getSales: (filter, searchTerm = "") =>
+        ipcRenderer.invoke("sales:getAll", filter, searchTerm),
 
     getSaleById: (id) =>
         ipcRenderer.invoke("sales:getById", id),
@@ -60,8 +68,28 @@ contextBridge.exposeInMainWorld("elSharq", {
     updateSale: (id, sale) =>
         ipcRenderer.invoke("sales:update", id, sale),
 
-    deleteSale: (id, password) =>
-        ipcRenderer.invoke("sales:delete", id, password),
+    // ====== حجوزات العملاء ======
+    getReservations: () => ipcRenderer.invoke("reservations:getAll"),
+    createReservation: (payload) => ipcRenderer.invoke("reservations:create", payload),
+    addReservationPayment: (id, amount) => ipcRenderer.invoke("reservations:addPayment", id, amount),
+    cancelReservation: (id) => ipcRenderer.invoke("reservations:cancel", id),
+    deliverReservation: (id, additionalPayment) =>
+        ipcRenderer.invoke("reservations:deliver", id, additionalPayment),
+    deleteSale: (id, password, mode) =>
+        ipcRenderer.invoke("sales:delete", id, password, mode),
+
+    createSaleReturn: (id, payload) =>
+        ipcRenderer.invoke("sales:return:create", id, payload),
+
+    // ====== المعاملات السريعة ======
+    getQuickSales: () => ipcRenderer.invoke("quickTransactions:getSales"),
+    getQuickTransactions: () => ipcRenderer.invoke("quickTransactions:getHistory"),
+    deleteQuickTransaction: (id) => ipcRenderer.invoke("quickTransactions:delete", id),
+    createQuickSale: (sale) => ipcRenderer.invoke("quickTransactions:createSale", sale),
+    createQuickStandaloneReturn: (payload) =>
+        ipcRenderer.invoke("quickTransactions:createStandaloneReturn", payload),
+
+    createQuickReturn: (saleId, payload) => ipcRenderer.invoke("quickTransactions:createReturn", saleId, payload),
 
     // ====== طلبيه سباكه للتجار ======
     createPlumbingOrder: (order) =>
@@ -110,18 +138,31 @@ contextBridge.exposeInMainWorld("elSharq", {
     saveContact: (entity, id, contact) =>
         ipcRenderer.invoke("contacts:save", entity, id, contact),
 
+    getCashAccounts: () => ipcRenderer.invoke("cash:getAccounts"),
+
     getCashSummary: () =>
         ipcRenderer.invoke("cash:getSummary"),
 
     getCashTransactions: () =>
         ipcRenderer.invoke("cash:getTransactions"),
 
+    deleteCashTransaction: (transactionId) =>
+        ipcRenderer.invoke("cash:deleteManualTransaction", transactionId),
+
     getExpenseCategories: () =>
         ipcRenderer.invoke("cash:getExpenseCategories"),
+
+    getExpenses: () =>
+        ipcRenderer.invoke("cash:getExpenses"),
+
+    deleteExpense: (expenseId) =>
+        ipcRenderer.invoke("cash:deleteExpense", expenseId),
 
     addCashTransaction: (entry) =>
         ipcRenderer.invoke("cash:addTransaction", entry),
 
+    getCashStatement: (range) =>
+        ipcRenderer.invoke("cash:getStatement", range),
     getReportSummary: (range) =>
         ipcRenderer.invoke("reports:getSummary", range),
 
