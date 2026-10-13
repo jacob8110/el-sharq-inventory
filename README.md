@@ -19,22 +19,27 @@
 
 ## 🖥️ لقطات من النظام
 
-لقطات حقيقية من واجهة التطبيق أثناء تشغيله. قد تختلف بعض التفاصيل والبيانات الظاهرة عن أحدث نسخة؛ لا تتضمن الصور قاعدة البيانات أو معلومات عملاء.
+لقطات من واجهات النظام، ببيانات عرض تجريبية أو فارغة.
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="لوحة التحكم الرئيسية لنظام الشرق" width="900">
+  <img src="screenshots/dashboard.png" alt="الصفحة الرئيسية لنظام الشرق" width="900">
 </p>
-<p align="center"><strong>لوحة التحكم</strong></p>
+<p align="center"><strong>الصفحة الرئيسية</strong></p>
 
 <p align="center">
-  <img src="screenshots/products.png" alt="صفحة إدارة المنتجات في نظام الشرق" width="900">
+  <img src="screenshots/products.png" alt="إدارة المنتجات في نظام الشرق" width="900">
 </p>
 <p align="center"><strong>إدارة المنتجات</strong></p>
 
 <p align="center">
-  <img src="screenshots/purchases.png" alt="صفحة إدخال فاتورة مشتريات في نظام الشرق" width="900">
+  <img src="screenshots/purchases.png" alt="صفحة المشتريات في نظام الشرق" width="900">
 </p>
-<p align="center"><strong>إدخال المشتريات</strong></p>
+<p align="center"><strong>المشتريات</strong></p>
+
+<p align="center">
+  <img src="screenshots/payroll.png" alt="إدارة العمال والرواتب في نظام الشرق" width="900">
+</p>
+<p align="center"><strong>العمال والرواتب</strong></p>
 
 ---
 
