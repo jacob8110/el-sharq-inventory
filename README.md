@@ -22,6 +22,11 @@
 لقطات من واجهات النظام، ببيانات عرض تجريبية أو فارغة.
 
 <p align="center">
+  <img src="screenshots/launch-screen.png" alt="شاشة افتتاح نظام الشرق" width="900">
+</p>
+<p align="center"><strong>شاشة الافتتاح</strong></p>
+
+<p align="center">
   <img src="screenshots/dashboard.png" alt="الصفحة الرئيسية لنظام الشرق" width="900">
 </p>
 <p align="center"><strong>الصفحة الرئيسية</strong></p>
