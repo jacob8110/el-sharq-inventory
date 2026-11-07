@@ -11,6 +11,14 @@
     <title>الشرق | نظام إدارة المحل</title>
 
        <link rel="stylesheet" href="style.css">
+<style id="finance-privacy-style">
+  /* إخفاء إحصائيات الأرباح والمبيعات من شاشة الفاتورة */
+  .sales-summary-grid, #saleSummaryGrid, [data-finance-summary="sales"] { display: none !important; }
+  /* إخفاء بطاقات ربح اليوم والخزنة من لوحة التحكم للمستخدم العادي */
+  .dashboard-stat-card:has(.stat-profit), .dashboard-stat-card:has(.stat-cash) { display: none !important; }
+  .stat-card-profit, .stat-card-treasury { display: none !important; }
+</style>
+    <link rel="stylesheet" href="posline-light-theme.css">
 </head>
 
 <body>
@@ -31,85 +39,81 @@
             </div>
 
             <nav class="sidebar-menu">
-
+                <div class="menu-category-label">العمليات اليومية</div>
                 <button class="menu-item active" data-nav="dashboard">
                     <span>⌂</span>
                     <span>الرئيسية</span>
                 </button>
-
-                <button class="menu-item" data-nav="products">
-                    <span>▣</span>
-                    <span>المنتجات</span>
-                </button>
-
                 <button class="menu-item" data-nav="sales">
                     <span>▤</span>
                     <span>المبيعات</span>
                 </button>
-
-                <button class="menu-item" data-nav="reservations">
-                    <span>▣</span>
-                    <span>حجوزات العملاء</span>
+                <button class="menu-item" data-nav="invoices">
+                    <span>🧾</span>
+                    <span>سجل الفواتير</span>
+                </button>
+                <button class="menu-item" data-nav="purchases">
+                    <span>▥</span>
+                    <span>المشتريات</span>
                 </button>
                 <button class="menu-item" data-nav="quick-transactions">
                     <span>⚡</span>
                     <span>المعاملات السريعة</span>
                 </button>
 
+                <div class="menu-category-label">المخزن والمنتجات</div>
+                <button class="menu-item" data-nav="products">
+                    <span>▣</span>
+                    <span>المنتجات والأسعار</span>
+                </button>
+                <button class="menu-item" data-nav="stock">
+                    <span>▦</span>
+                    <span>حركة المخزن</span>
+                </button>
                 <button class="menu-item" data-nav="plumbing-orders">
                     <span>🔧</span>
                     <span>طلبات السباكة</span>
                 </button>
-
-                <button class="menu-item" data-nav="purchases">
-                    <span>▥</span>
-                    <span>المشتريات</span>
+                <button class="menu-item" data-nav="reservations">
+                    <span>📋</span>
+                    <span>حجوزات العملاء</span>
                 </button>
 
-                <button class="menu-item" data-nav="stock">
-                    <span>▦</span>
-                    <span>المخزن</span>
-                </button>
-
-                <button class="menu-item" data-nav="customers">
-                    <span>♙</span>
-                    <span>العملاء</span>
-                </button>
-
-                <button class="menu-item" data-nav="receivables">
-                    <span>◷</span>
-                    <span>المستحقات</span>
-                </button>
-
-                <button class="menu-item" data-nav="suppliers">
-                    <span>♧</span>
-                    <span>الموردين</span>
-                </button>
-
+                <div class="menu-category-label">الحسابات والمالية</div>
                 <button class="menu-item" data-nav="cashier">
                     <span>◈</span>
-                    <span>الخزنة</span>
+                    <span>الخزنة والنقدية</span>
                 </button>
-
-                <button class="menu-item" data-nav="workers" data-feature="worker-payroll-nav-v1">
-                    <span>♙</span>
-                    <span>العمال والرواتب</span>
+                <button class="menu-item" data-nav="receivables">
+                    <span>◷</span>
+                    <span>المستحقات والديون</span>
                 </button>
                 <button class="menu-item" data-nav="expenses">
                     <span>↘</span>
                     <span>المصروفات</span>
                 </button>
-
+                <button class="menu-item" data-nav="workers" data-feature="worker-payroll-nav-v1">
+                    <span>👥</span>
+                    <span>العمال والرواتب</span>
+                </button>
                 <button class="menu-item" data-nav="reports">
-                    <span>▥</span>
-                    <span>التقارير</span>
+                    <span>📊</span>
+                    <span>التقارير الشاملة</span>
                 </button>
 
+                <div class="menu-category-label">الأطراف والإعدادات</div>
+                <button class="menu-item" data-nav="customers">
+                    <span>👤</span>
+                    <span>دليل العملاء</span>
+                </button>
+                <button class="menu-item" data-nav="suppliers">
+                    <span>🏢</span>
+                    <span>الموردين</span>
+                </button>
                 <button class="menu-item" data-nav="settings">
                     <span>⚙</span>
                     <span>الإعدادات</span>
                 </button>
-
             </nav>
 
             <div class="sidebar-footer">
@@ -171,8 +175,8 @@
                         </h3>
 
                         <p>
-                            تابع المبيعات والمخزون والخزنة
-                            والحسابات بسهولة.
+                            تابع حركة المحل والمخزون
+                            والعمليات اليومية بسهولة.
                         </p>
                     </div>
 
@@ -183,65 +187,9 @@
                 </div>
 
 
-                <!-- Statistics -->
-
                 <div class="stats-grid">
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon sales">
-                            م
-                        </div>
-
-                        <div>
-                            <span>مبيعات اليوم</span>
-                            <strong>0.00 ج.م</strong>
-                        </div>
-
-                    </div>
-
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon cash">
-                            خ
-                        </div>
-
-                        <div>
-                            <span>الخزنة</span>
-                            <strong>0.00 ج.م</strong>
-                        </div>
-
-                    </div>
-
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon stock">
-                            م
-                        </div>
-
-                        <div>
-                            <span>قيمة المخزون</span>
-                            <strong>0.00 ج.م</strong>
-                        </div>
-
-                    </div>
-
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon profit">
-                            ر
-                        </div>
-
-                        <div>
-                            <span>ربح اليوم</span>
-                            <strong>0.00 ج.م</strong>
-                        </div>
-
-                    </div>
-
+                    <div class="stat-card"><div class="stat-icon stock">م</div><div><span>الأصناف</span><strong>جارٍ التحميل...</strong></div></div>
+                    <div class="stat-card"><div class="stat-icon alert">!</div><div><span>تنبيهات المخزون</span><strong>جارٍ التحميل...</strong></div></div>
                 </div>
 
 
@@ -346,3 +294,5 @@
 
 </body>
 </html>
+
+

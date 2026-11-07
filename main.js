@@ -1,5 +1,6 @@
-const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
+﻿const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const splashController = require("./src/splash-main");
 let splashWindow = null;
 let mainWindow = null;
@@ -76,6 +77,9 @@ function initializeBackend() {
     const { verifyDeletionPassword } = require("./src/database/deletion");
     registerOperations(ipcMain, db);
 
+const invoiceGroups = require("./src/database/invoice-consolidation");
+    invoiceGroups.registerConsolidation(ipcMain, db);
+
     ipcMain.handle("database:backup", async () => {
         const stamp = new Date().toISOString().slice(0, 10);
         const result = await dialog.showSaveDialog({
@@ -89,6 +93,187 @@ function initializeBackend() {
         return { success: true, filePath: result.filePath };
     });
 
+    ipcMain.handle("products:exportCatalog", async () => {
+        const result = await dialog.showSaveDialog({
+            title: "تصدير المنتجات والأسعار فقط",
+            defaultPath: `el-sharq-products-prices-${new Date().toISOString().slice(0, 10)}.json`,
+            filters: [{ name: "El-Sharq product catalog", extensions: ["json"] }]
+        });
+        if (result.canceled) return { success: false, canceled: true };
+        if (!result.filePath) throw new Error("لم يتم تحديد مكان حفظ ملف المنتجات");
+
+        const rows = db.prepare(`
+            SELECT p.internal_code, p.barcode, p.name, c.name AS category_name,
+                p.unit, p.purchase_price, p.purchase_price_manual, p.sale_price,
+                p.company_discount_percent, p.is_active,
+                p.tile_length_cm, p.tile_width_cm, p.tiles_per_carton
+            FROM products p
+            LEFT JOIN categories c ON c.id = p.category_id
+            ORDER BY p.internal_code
+        `).all();
+        if (!rows.length) throw new Error("لا توجد منتجات لتصديرها");
+        if (rows.some(row => !row.internal_code || !row.category_name)) {
+            throw new Error("يوجد منتج بلا كود أو قسم؛ أصلح بياناته قبل التصدير");
+        }
+
+        const payload = {
+            format: "el-sharq-product-prices",
+            version: 1,
+            exported_at: new Date().toISOString(),
+            products: rows
+        };
+        fs.writeFileSync(result.filePath, JSON.stringify(payload, null, 2), "utf8");
+        return { success: true, count: rows.length, filePath: result.filePath };
+    });
+
+    ipcMain.handle("products:importCatalog", async () => {
+        const selected = await dialog.showOpenDialog({
+            title: "اختيار ملف منتجات وأسعار الشرق",
+            properties: ["openFile"],
+            filters: [{ name: "El-Sharq product catalog", extensions: ["json"] }]
+        });
+        if (selected.canceled || !selected.filePaths?.[0]) return { success: false, canceled: true };
+
+        const filePath = selected.filePaths[0];
+        const fileSize = fs.statSync(filePath).size;
+        if (fileSize > 25 * 1024 * 1024) throw new Error("حجم ملف النقل أكبر من الحد المسموح");
+        let payload;
+        try {
+            const raw = fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
+            payload = JSON.parse(raw);
+        } catch (_) {
+            throw new Error("تعذر قراءة الملف. اختر ملف تصدير المنتجات من برنامج الشرق");
+        }
+        if (!payload || payload.format !== "el-sharq-product-prices" || payload.version !== 1 || !Array.isArray(payload.products)) {
+            throw new Error("صيغة الملف غير مدعومة؛ اختر ملف منتجات مصدره برنامج الشرق");
+        }
+        if (payload.products.length === 0 || payload.products.length > 25000) {
+            throw new Error("ملف المنتجات فارغ أو يحتوي عددًا غير مسموح به من الأصناف");
+        }
+
+        const toPrice = (value, label) => {
+            const number = Number(value);
+            if (!Number.isFinite(number) || number < 0) throw new Error(`${label} غير صحيح في ملف النقل`);
+            return number;
+        };
+        const toNullableNumber = (value, label) => {
+            if (value === null || value === undefined || value === "") return null;
+            const number = Number(value);
+            if (!Number.isFinite(number) || number < 0) throw new Error(`${label} غير صحيح في ملف النقل`);
+            return number;
+        };
+        const codes = new Set();
+        const products = payload.products.map((item, index) => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`بيانات المنتج رقم ${index + 1} غير صحيحة`);
+            const internalCode = String(item.internal_code ?? "").trim();
+            const name = String(item.name ?? "").trim();
+            const categoryName = String(item.category_name ?? "").trim();
+            if (!internalCode || !name || !categoryName) throw new Error(`ينقص الكود أو الاسم أو القسم في المنتج رقم ${index + 1}`);
+            if (codes.has(internalCode)) throw new Error(`الكود مكرر داخل ملف النقل: ${internalCode}`);
+            codes.add(internalCode);
+            const manualValue = item.purchase_price_manual;
+            if (![0, 1, false, true].includes(manualValue)) throw new Error(`علامة سعر الشراء اليدوي غير صحيحة للصنف ${internalCode}`);
+            const activeValue = item.is_active;
+            if (![0, 1, false, true].includes(activeValue)) throw new Error(`حالة الصنف غير صحيحة للكود ${internalCode}`);
+            return {
+                internal_code: internalCode,
+                barcode: item.barcode == null ? null : (String(item.barcode).trim() || null),
+                name,
+                category_name: categoryName,
+                unit: String(item.unit || "قطعة").trim() || "قطعة",
+                purchase_price: toPrice(item.purchase_price, "سعر الشراء"),
+                purchase_price_manual: manualValue ? 1 : 0,
+                sale_price: toPrice(item.sale_price, "سعر البيع"),
+                company_discount_percent: toPrice(item.company_discount_percent ?? 0, "خصم الشركة"),
+                is_active: activeValue ? 1 : 0,
+                tile_length_cm: toNullableNumber(item.tile_length_cm, "طول البلاطة"),
+                tile_width_cm: toNullableNumber(item.tile_width_cm, "عرض البلاطة"),
+                tiles_per_carton: toNullableNumber(item.tiles_per_carton, "عدد البلاطات")
+            };
+        });
+
+        const findProduct = db.prepare(`
+            SELECT p.id, c.name AS category_name
+            FROM products p LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.internal_code = ?
+        `);
+        const findCategory = db.prepare("SELECT id FROM categories WHERE name = ? AND is_active = 1");
+        let skipCount = 0;
+        let addCount = 0;
+        for (const product of products) {
+            const existing = findProduct.get(product.internal_code);
+            if (existing) {
+                skipCount += 1;
+                continue;
+            }
+            if (!findCategory.get(product.category_name)) {
+                throw new Error(`القسم «${product.category_name}» غير موجود عند العميل. لم يتم استيراد أي منتج`);
+            }
+            addCount += 1;
+        }
+
+        const confirmation = await dialog.showMessageBox({
+            type: "warning",
+            title: "تأكيد استيراد المنتجات والأسعار",
+            message: `سيتم تجاهل ${skipCount} منتج موجود بنفس الكود وإضافة ${addCount} منتج جديد.`,
+            detail: "الأصناف الموجودة بنفس الكود ستُتجاهل بالكامل دون تغيير الاسم أو الوحدة أو الأسعار أو الباركود أو المخزون. الأصناف الجديدة فقط ستضاف بمخزون صفر. لا يستورد هذا الملف فواتير أو عملاء أو موردين أو أرصدة. تأكد أنك اخترت ملفًا موثوقًا من محلّك.",
+            buttons: ["إلغاء", "استيراد الآن"],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true
+        });
+        if (confirmation.response !== 1) return { success: false, canceled: true };
+
+        const applyCatalog = db.transaction(() => {
+
+            const insertProduct = db.prepare(`
+                INSERT INTO products (
+                    internal_code, barcode, name, category_id, unit,
+                    purchase_price, purchase_price_manual, sale_price,
+                    minimum_stock, is_active, tile_length_cm, tile_width_cm,
+                    tiles_per_carton, company_discount_percent
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+            `);
+            const insertStock = db.prepare(`
+                INSERT OR IGNORE INTO stock (product_id, location_id, quantity)
+                VALUES (?, ?, 0)
+            `);
+            const locations = db.prepare("SELECT id FROM locations WHERE name IN ('المعرض', 'المخزن')").all();
+            let added = 0;
+            let skipped = 0;
+            for (const product of products) {
+                const existing = findProduct.get(product.internal_code);
+                if (existing) {
+                    skipped += 1;
+                    continue;
+                }
+                const category = findCategory.get(product.category_name);
+                if (!category) throw new Error(`القسم «${product.category_name}» غير موجود`);
+                const inserted = insertProduct.run(
+                    product.internal_code, product.barcode, product.name,
+                    category.id, product.unit, product.purchase_price,
+                    product.purchase_price_manual, product.sale_price,
+                    product.is_active, product.tile_length_cm,
+                    product.tile_width_cm, product.tiles_per_carton,
+                    product.company_discount_percent
+                );
+                const newId = Number(inserted.lastInsertRowid);
+                for (const location of locations) insertStock.run(newId, Number(location.id));
+                added += 1;
+            }
+            return { added, skipped };
+        });
+
+        try {
+            const result = applyCatalog();
+            return { success: true, added: result.added, skipped: result.skipped };
+        } catch (error) {
+            if (/UNIQUE constraint failed/i.test(String(error?.message || ""))) {
+                throw new Error("يوجد كود أو باركود مكرر عند العميل؛ أُلغي الاستيراد بالكامل ولم تُحفظ أي تغييرات");
+            }
+            throw error;
+        }
+    });
     function nonNegativeNumber(value, label) {
         const number = Number(value ?? 0);
         if (!Number.isFinite(number) || number < 0) {
@@ -112,6 +297,70 @@ function initializeBackend() {
         }
         if (/^RD(?:-|$)/i.test(normalizedCode)) return `RD${normalizedCode.slice(2)}`;
         return `RD-${normalizedCode}`;
+    }
+
+    // AUTO-PRODUCT-CODE-V1
+    const productCodeSections = new Map([
+        ["سباكة", "PL"], ["سيراميك", "CER"], ["أدوات صحية", "SAN"],
+        ["خلاطات", "MIX"], ["إكسسوارات", "ACC"], ["كهرباء", "EL"],
+        ["نواكل", "NAK"], ["نجارة", "NJR"], ["حدايد", "HD"]
+    ]);
+
+    function normalizeProductCodeText(value) {
+        return String(value || "")
+            .toLowerCase()
+            .replace(/[\u064B-\u065F\u0670]/g, "")
+            .replace(/[أإآ]/g, "ا")
+            .replace(/ى/g, "ي")
+            .replace(/ة/g, "ه")
+            .replace(/[^a-z0-9\u0600-\u06FF]+/g, " ")
+            .trim();
+    }
+
+    function getProductCodeSegment(name) {
+        const normalizedName = normalizeProductCodeText(name);
+        const companies = [
+            ["راديكس", "RDX"], ["ريدكس", "RDX"], ["radix", "RDX"], ["redex", "RDX"],
+            ["هوايي", "HWI"], ["فيجا", "VJA"], ["تيتان", "TTN"], ["سيديلي", "SDL"],
+            ["روزيتا", "RZT"], ["ليبرا", "LBR"], ["فلورا", "FLR"], ["بلاكور", "BLK"],
+            ["hydrojet", "HYJ"], ["فورا", "FOR"], ["سبينار", "SPN"], ["بي ام", "BM"],
+            ["سانشي", "SNC"], ["العاصمة", "ASM"], ["رويال", "RYL"],
+            ["مصطفى خليل", "MKH"], ["فينوس", "VNS"], ["جومينا", "JMN"], ["اليوس", "ELS"]
+        ];
+        const company = companies.find(([needle]) => normalizedName.includes(normalizeProductCodeText(needle)));
+        if (company) return company[1];
+
+        const productTypes = [
+            ["مفتاح سلم", "MFS"], ["مفتاح", "MFT"], ["بريزة", "BRZ"], ["شاسيه", "SHS"],
+            ["لمبة", "LMP"], ["سلك", "SLK"], ["شريط", "SHR"], ["لوحة", "LWH"],
+            ["عداد", "ADD"], ["جرس", "JRS"], ["شوكة", "SHK"], ["خرطوم", "KRT"],
+            ["دواية", "DWA"], ["بواط", "BWT"], ["مواسير", "MOS"], ["قفيز", "QFZ"],
+            ["كوع", "KOU"], ["جلبة", "JLB"], ["محبس", "MHB"], ["خلاط", "KHL"],
+            ["حوض", "HWD"], ["دش", "DSH"], ["shelf", "SHF"], ["hook", "HOK"],
+            ["paper holder", "PHR"], ["soap", "SOP"], ["toilet", "WCT"],
+            ["basin", "BAS"], ["tap", "TAP"], ["shower", "DSH"], ["elbow", "ELB"],
+            ["socket", "SCK"], ["tee", "TEE"], ["pipe", "PIP"], ["valve", "VLV"], ["tile", "TIL"]
+        ];
+        const productType = productTypes.find(([needle]) => normalizedName.includes(normalizeProductCodeText(needle)));
+        return productType ? productType[1] : "GEN";
+    }
+
+    function generateAutomaticProductCode(name, categoryName) {
+        const sectionCode = productCodeSections.get(categoryName) || "GEN";
+        const prefix = `${sectionCode}-${getProductCodeSegment(name)}-`;
+        const existingCodes = db.prepare("SELECT internal_code FROM products WHERE internal_code LIKE ?").all(`${prefix}%`);
+        let sequence = existingCodes.reduce((highest, row) => {
+            const code = String(row.internal_code || "");
+            if (!code.startsWith(prefix)) return highest;
+            const suffix = code.slice(prefix.length);
+            return /^\d+$/.test(suffix) ? Math.max(highest, Number(suffix)) : highest;
+        }, 0) + 1;
+        let code = `${prefix}${String(sequence).padStart(4, "0")}`;
+        while (db.prepare("SELECT id FROM products WHERE internal_code = ?").get(code)) {
+            sequence += 1;
+            code = `${prefix}${String(sequence).padStart(4, "0")}`;
+        }
+        return code;
     }
 
     const migrateRedexProductCodes = db.transaction(() => {
@@ -162,6 +411,7 @@ function initializeBackend() {
             p.unit,
             p.purchase_price,
             p.purchase_price_manual,
+            p.ceramic_purchase_price_per_sqm,
             p.sale_price,
             p.minimum_stock AS min_stock,
             p.is_active AS active,
@@ -301,10 +551,7 @@ function initializeBackend() {
             if (!product.name || !product.name.trim()) {
                 throw new Error("اسم المنتج مطلوب");
             }
-            if (!product.internal_code || !product.internal_code.trim()) {
-                throw new Error("كود المنتج مطلوب");
-            }
-            const internalCode = normalizeRedexProductCode(product.name, product.internal_code);
+            const providedCode = String(product.internal_code || "").trim();
             const barcode = product.barcode?.trim() || null;
 
             const categoryId = Number(product.category_id);
@@ -318,6 +565,8 @@ function initializeBackend() {
             ).get(categoryId);
             if (!categoryRow) throw new Error("القسم غير موجود أو غير نشط");
             const categoryName = categoryRow.name;
+            const codeGenerated = !providedCode;
+            const internalCode = providedCode || generateAutomaticProductCode(product.name, categoryName);
             const unit = isPlumbingPipe(product.name, categoryName) ? "متر" : (product.unit || "قطعة");
 
             const salePrice = nonNegativeNumber(product.sale_price, "سعر البيع");
@@ -480,7 +729,9 @@ function initializeBackend() {
 
             return {
                 success: true,
-                productId
+                productId,
+                internalCode,
+                codeGenerated
             };
 
         });
@@ -501,8 +752,7 @@ function initializeBackend() {
             if (!existing) throw new Error("المنتج غير موجود");
 
             if (!product.name || !product.name.trim()) throw new Error("اسم المنتج مطلوب");
-            if (!product.internal_code || !product.internal_code.trim()) throw new Error("كود المنتج مطلوب");
-            const internalCode = normalizeRedexProductCode(product.name, product.internal_code);
+            const providedCode = String(product.internal_code || "").trim();
             const barcode = product.barcode?.trim() || null;
 
             const categoryId = Number(product.category_id);
@@ -513,6 +763,8 @@ function initializeBackend() {
             ).get(categoryId);
             if (!categoryRow) throw new Error("القسم غير موجود أو غير نشط");
             const categoryName = categoryRow.name;
+            const internalCode = providedCode || String(existing.internal_code || "").trim();
+            if (!internalCode) throw new Error("كود المنتج الحالي غير موجود");
             const unit = isPlumbingPipe(product.name, categoryName) ? "متر" : (product.unit || "قطعة");
 
             const salePrice = nonNegativeNumber(product.sale_price, "سعر البيع");
@@ -1289,18 +1541,18 @@ function initializeBackend() {
     // =========================
 
     ipcMain.handle("sales:getAll", (_e, filter = "normal", searchTerm = "") => {
-        // Without a search, show the latest 100. With a search, include matching historical invoices.
         const baseSelect = `
             SELECT
                 s.*,
                 s.total_amount AS total,
-                s.paid_amount AS paid,
-                s.remaining_amount AS remaining,
-                c.name AS customer_name
+                s.paid_amount AS paid_base,
+                s.remaining_amount AS remaining_base,
+                c.name AS customer_name,
+                (SELECT COALESCE(SUM(credit), 0) FROM customer_transactions WHERE reference_id = s.id AND reference_type = 'opening_balance' AND transaction_type = 'payment') AS paid_for_old
             FROM sales s
             LEFT JOIN customers c ON c.id = s.customer_id
         `;
-        const conditions = ["COALESCE(s.is_hidden, 0) = 0"];
+        const conditions = ["COALESCE(s.is_hidden, 0) = 0", "COALESCE(s.status, '') != 'consolidated'"];
         const params = [];
         if (filter === "plumbing_order") {
             conditions.push("s.sale_type = 'plumbing_order'");
@@ -1316,11 +1568,24 @@ function initializeBackend() {
 
         const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
         const limitClause = query ? "" : "LIMIT 100";
-        return db.prepare(`${baseSelect} ${whereClause} ORDER BY s.id DESC ${limitClause}`).all(...params);
+        
+        return db.prepare(`${baseSelect} ${whereClause} ORDER BY s.id DESC ${limitClause}`).all(...params).map(sale => {
+            const paid = Number(sale.paid_base || 0) + Number(sale.paid_for_old || 0);
+            const total = Number(sale.total_amount || 0);
+            const remaining = Math.max(0, total - Number(sale.paid_base || 0)); // المتبقي من الفاتورة نفسها
+            return {
+                ...sale,
+                total: total,
+                paid: paid,
+                remaining: remaining,
+                is_consolidated: invoiceGroups.metadata(sale)?.kind === "parent",
+                notes: invoiceGroups.metadata(sale)?.originalNotes ?? sale.notes
+            };
+        });
     });
 
-    ipcMain.handle("sales:getById", (_e, id) => {
-        id = Number(id);
+    function loadSaleDetails(id, sectionOnly = false) {
+        id = sectionOnly ? Number(id) : invoiceGroups.resolveParentId(db, id);
         const sale = db.prepare(`
         SELECT
             s.*,
@@ -1335,6 +1600,79 @@ function initializeBackend() {
         WHERE s.id = ?
     `).get(id);
         if (!sale) return null;
+
+        if (sale.customer_id) {
+            const customer = db.prepare(`
+                SELECT id, name, address, opening_balance, created_at
+                FROM customers
+                WHERE id = ?
+            `).get(sale.customer_id);
+
+            if (customer) {
+                sale.customer_address = customer.address || null;
+
+                const otherInvoices = db.prepare(`
+                    SELECT id, invoice_number, total_amount, paid_amount,
+                           remaining_amount, created_at, due_date
+                    FROM sales
+                    WHERE customer_id = ?
+                      AND id != ?
+                      AND status = 'completed'
+                      AND COALESCE(is_hidden, 0) = 0
+                      AND remaining_amount > 0.000001
+                    ORDER BY id ASC
+                `).all(sale.customer_id, sale.id);
+
+                const balanceRow = db.prepare(`
+                    SELECT
+                        c.opening_balance,
+                        c.created_at,
+                        c.opening_balance + COALESCE(SUM(ct.debit - ct.credit), 0) AS total_balance
+                    FROM customers c
+                    LEFT JOIN customer_transactions ct ON ct.customer_id = c.id
+                    WHERE c.id = ?
+                    GROUP BY c.id
+                `).get(sale.customer_id);
+
+                const invoiceBalanceRow = db.prepare(`
+                    SELECT COALESCE(SUM(remaining_amount), 0) AS invoices_remaining
+                    FROM sales
+                    WHERE customer_id = ?
+                      AND status = 'completed'
+                      AND COALESCE(is_hidden, 0) = 0
+                      AND remaining_amount > 0.000001
+                `).get(sale.customer_id);
+
+                const openingRemaining = Math.round(Math.max(
+                    0,
+                    Number(balanceRow?.total_balance || 0) -
+                    Number(invoiceBalanceRow?.invoices_remaining || 0)
+                ) * 100) / 100;
+
+                sale.previous_invoices = otherInvoices;
+
+                if (openingRemaining > 0.000001) {
+                    const openingTotal = Math.max(
+                        Number(balanceRow?.opening_balance || 0),
+                        openingRemaining
+                    );
+
+                    sale.previous_invoices.unshift({
+                        id: `opening-${sale.customer_id}`,
+                        invoice_number: "رصيد افتتاحي",
+                        total_amount: openingTotal,
+                        paid_amount: Math.max(0, openingTotal - openingRemaining),
+                        remaining_amount: openingRemaining,
+                        created_at: customer.created_at || sale.created_at || null,
+                        due_date: null,
+                        is_opening_balance: true
+                    });
+                }
+
+                sale.customer_total_balance = Number(balanceRow?.total_balance || 0);
+            }
+        }
+
         sale.items = db.prepare(`
         SELECT
             si.*,
@@ -1418,8 +1756,9 @@ function initializeBackend() {
         }
         sale.returns = Array.from(returnMap.values());
 
-        return sale;
-    });
+        return sectionOnly ? sale : invoiceGroups.decorateInvoice(db, sale, sectionId => loadSaleDetails(sectionId, true));
+    }
+    ipcMain.handle("sales:getById", (_e, id) => loadSaleDetails(id));
 
     ipcMain.handle("sales:delete", (_event, saleId, password, mode = "reverse") => {
         verifyDeletionPassword(db, password);
@@ -1431,6 +1770,7 @@ function initializeBackend() {
 
             const sale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
             if (!sale) throw new Error("فاتورة البيع غير موجودة");
+            invoiceGroups.assertOrdinary(sale);
 
             if (mode === "hide") {
                 db.prepare("UPDATE sales SET is_hidden = 1 WHERE id = ?").run(id);
@@ -1577,6 +1917,16 @@ function initializeBackend() {
                 SELECT * FROM sales WHERE id = ? AND status = 'completed'
             `).get(id);
             if (!sale) throw new Error("الفاتورة غير موجودة أو غير مكتملة");
+            const returnGroupInfo = invoiceGroups.metadata(sale);
+            if (returnGroupInfo && returnGroupInfo.kind === "section") {
+                throw new Error("لا يمكن عمل مرتجع لقسم منفرد، يرجى عمل المرتجع من الفاتورة المجمعة الأم");
+            }
+
+            let relatedReturnSaleIds = [id];
+            if (returnGroupInfo && Array.isArray(returnGroupInfo.sectionIds)) {
+                relatedReturnSaleIds = relatedReturnSaleIds.concat(returnGroupInfo.sectionIds.map(Number));
+            }
+            const returnPlaceholders = relatedReturnSaleIds.map(() => '?').join(',');
 
             const originalItems = db.prepare(`
                 SELECT
@@ -1600,8 +1950,8 @@ function initializeBackend() {
                 FROM sale_items si
                 JOIN products p ON p.id = si.product_id
                 LEFT JOIN categories cat ON cat.id = p.category_id
-                WHERE si.sale_id = ?
-            `).all(id);
+                WHERE si.sale_id IN (${returnPlaceholders})
+            `).all(...relatedReturnSaleIds);
 
             const itemById = new Map(originalItems.map(item => [Number(item.id), item]));
             const plumbingGross = originalItems.reduce((sum, item) =>
@@ -1698,13 +2048,9 @@ function initializeBackend() {
             totalAmount = Math.round(totalAmount * 100) / 100;
             if (totalAmount <= 0) throw new Error("قيمة المرتجع يجب أن تكون أكبر من صفر");
 
-            const balanceCreditAmount = Math.min(
-                totalAmount,
-                Math.max(0, Number(sale.remaining_amount || 0))
-            );
-            const cashRefundAmount = Math.round(
-                Math.max(0, totalAmount - balanceCreditAmount) * 100
-            ) / 100;
+            // لا يتم تسجيل رد نقدي تلقائياً: المبلغ يظل رصيداً دائناً مستحقاً للعميل حتى يصرفه المستخدم بنفسه
+            const balanceCreditAmount = totalAmount;
+            const cashRefundAmount = 0;
 
             let nextReturnId = Number(
                 db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM sales_returns").get().nextId
@@ -1863,6 +2209,33 @@ function initializeBackend() {
         `).all();
     });
 
+    ipcMain.handle("reservations:getById", (_event, reservationId) => {
+        const id = Number(reservationId);
+        if (!Number.isInteger(id) || id <= 0) throw new Error("رقم الحجز غير صحيح");
+        const reservation = db.prepare(`
+            SELECT r.*, s.invoice_number AS invoice_number
+            FROM reservations r
+            LEFT JOIN sales s ON s.id = r.sale_id
+            WHERE r.id = ?
+        `).get(id);
+        if (!reservation) return null;
+        reservation.items = db.prepare(`
+            SELECT ri.*, p.name AS product_name, p.unit AS product_unit,
+                   p.internal_code AS product_code
+            FROM reservation_items ri
+            JOIN products p ON p.id = ri.product_id
+            WHERE ri.reservation_id = ?
+            ORDER BY ri.id
+        `).all(id);
+        reservation.payments = db.prepare(`
+            SELECT amount, payment_type, payment_method, notes, created_at
+            FROM reservation_payments
+            WHERE reservation_id = ?
+            ORDER BY id
+        `).all(id);
+        return reservation;
+    });
+
     ipcMain.handle("reservations:create", (_event, payload) => db.transaction(() => {
         if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {
             throw new Error("أضف صنفًا واحدًا على الأقل للحجز");
@@ -1980,6 +2353,113 @@ function initializeBackend() {
             paidAmount: deposit,
             remainingAmount: subtotal - deposit
         };
+    })());
+
+    ipcMain.handle("reservations:update", (_event, reservationId, payload) => db.transaction(() => {
+        const id = Number(reservationId);
+        if (!Number.isInteger(id) || id <= 0) throw new Error("رقم الحجز غير صحيح");
+        if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {
+            throw new Error("أضف صنفًا واحدًا على الأقل للحجز");
+        }
+        const reservation = db.prepare("SELECT * FROM reservations WHERE id = ?").get(id);
+        if (!reservation) throw new Error("الحجز غير موجود");
+        if (reservation.status !== "pending") throw new Error("لا يمكن تعديل حجز تم تسليمه أو إلغاؤه");
+
+        const customerName = String(payload.customer_name || "").trim();
+        if (!customerName) throw new Error("اكتب اسم العميل");
+        const phone = String(payload.customer_phone || "").trim() || null;
+        const dueDate = String(payload.due_date || "").trim() || null;
+        const notes = String(payload.notes || "").trim() || null;
+        const existingItems = db.prepare("SELECT * FROM reservation_items WHERE reservation_id = ? ORDER BY id").all(id);
+        const existingById = new Map(existingItems.map((item) => [Number(item.id), item]));
+        const usedExistingIds = new Set();
+        const prepared = [];
+        const requested = new Map();
+        let total = 0;
+
+        for (const input of payload.items) {
+            const productId = Number(input.product_id);
+            const quantity = Number(input.quantity);
+            if (!Number.isInteger(productId) || productId <= 0) throw new Error("اختر صنفًا صحيحًا");
+            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("أدخل كمية صحيحة لكل صنف");
+
+            const existingId = Number(input.existing_item_id || 0);
+            const existing = existingId ? existingById.get(existingId) : null;
+            if (existingId && (!existing || usedExistingIds.has(existingId))) {
+                throw new Error("تعذر مطابقة أحد أصناف الحجز القديم. حدّث الصفحة وحاول مرة أخرى.");
+            }
+            const keepHistoricalPrice = Boolean(existing && Number(existing.product_id) === productId);
+            const product = db.prepare(`
+                SELECT id, name, sale_price, purchase_price, unit
+                FROM products WHERE id = ? AND (is_active = 1 OR ? = 1)
+            `).get(productId, keepHistoricalPrice ? 1 : 0);
+            if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+            if (keepHistoricalPrice) usedExistingIds.add(existingId);
+            const unitPrice = keepHistoricalPrice ? Number(existing.unit_price) : Number(product.sale_price || 0);
+            const purchasePrice = keepHistoricalPrice ? Number(existing.purchase_price || 0) : Number(product.purchase_price || 0);
+            const lineTotal = Math.round(quantity * unitPrice * 100) / 100;
+            prepared.push({ productId, productName: product.name, productUnit: product.unit, quantity, unitPrice, purchasePrice, lineTotal });
+            requested.set(productId, Number(requested.get(productId) || 0) + quantity);
+            total += lineTotal;
+        }
+        total = Math.round(total * 100) / 100;
+        if (total <= 0) throw new Error("إجمالي الحجز يجب أن يكون أكبر من صفر");
+
+        for (const [productId, quantity] of requested) {
+            const product = prepared.find((item) => item.productId === productId);
+            const physical = Number(db.prepare(`
+                SELECT COALESCE(SUM(quantity), 0) AS quantity FROM stock WHERE product_id = ?
+            `).get(productId).quantity || 0);
+            const reservedOther = Number(db.prepare(`
+                SELECT COALESCE(SUM(ri.quantity), 0) AS quantity
+                FROM reservation_items ri
+                JOIN reservations r ON r.id = ri.reservation_id
+                WHERE ri.product_id = ? AND r.status = 'pending' AND r.id <> ?
+            `).get(productId, id).quantity || 0);
+            if (quantity > physical - reservedOther + 0.000001) {
+                throw new Error(`الكمية المتاحة للحجز من "${product.productName}" هي ${Math.max(0, physical - reservedOther)}`);
+            }
+        }
+
+        const previousPaid = Math.round(Number(reservation.paid_amount || 0) * 100) / 100;
+        const refundedAmount = Math.round(Math.max(0, previousPaid - total) * 100) / 100;
+        const paid = refundedAmount > 0 ? total : previousPaid;
+        const remaining = Math.max(0, Math.round((total - paid) * 100) / 100);
+        if (refundedAmount > 0) {
+            const account = db.prepare(`
+                SELECT id FROM cash_accounts
+                WHERE name = 'الخزنة الرئيسية' AND is_active = 1 LIMIT 1
+            `).get();
+            if (!account) throw new Error("لا يمكن رد فرق المدفوع: الخزنة الرئيسية غير موجودة أو غير نشطة");
+            db.prepare(`
+                INSERT INTO reservation_payments
+                    (reservation_id, amount, payment_type, cash_account_id, payment_method, notes)
+                VALUES (?, ?, 'refund', ?, 'cash', ?)
+            `).run(id, refundedAmount, account.id, "رد فرق تعديل الحجز " + reservation.reservation_number);
+            db.prepare(`
+                INSERT INTO cash_transactions
+                    (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description)
+                VALUES (?, 'reservation_refund', 'out', ?, 'reservation', ?, ?)
+            `).run(account.id, refundedAmount, id, "رد فرق تعديل الحجز " + reservation.reservation_number);
+        }
+
+        const customer = db.prepare("SELECT id FROM customers WHERE name = ? LIMIT 1").get(customerName);
+        db.prepare(`
+            UPDATE reservations
+            SET customer_id = ?, customer_name = ?, customer_phone = ?, due_date = ?, notes = ?,
+                subtotal = ?, total_amount = ?, paid_amount = ?, remaining_amount = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(customer ? Number(customer.id) : null, customerName, phone, dueDate, notes, total, total, paid, remaining, id);
+        db.prepare("DELETE FROM reservation_items WHERE reservation_id = ?").run(id);
+        const insertItem = db.prepare(`
+            INSERT INTO reservation_items
+                (reservation_id, product_id, quantity, unit_price, purchase_price, total_amount)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        for (const item of prepared) {
+            insertItem.run(id, item.productId, item.quantity, item.unitPrice, item.purchasePrice, item.lineTotal);
+        }
+        return { success: true, id, reservationNumber: reservation.reservation_number, totalAmount: total, paidAmount: paid, remainingAmount: remaining, refundedAmount };
     })());
 
     ipcMain.handle("reservations:addPayment", (_event, reservationId, amountInput) => db.transaction(() => {
@@ -2170,13 +2650,13 @@ function initializeBackend() {
         const headerLocationId = Number(showroom.id || warehouse.id);
         const saleResult = db.prepare(`
             INSERT INTO sales (
-                invoice_number, customer_id, location_id, sale_type, subtotal,
+                invoice_number, customer_id, customer_phone, location_id, sale_type, subtotal,
                 plumbing_discount_percent, plumbing_discount_amount, general_discount_amount,
                 total_amount, paid_amount, remaining_amount, notes, due_date, status
             )
-            VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, 'completed')
-        `).run(
-            invoiceNumber, customerId, headerLocationId,
+                VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, 'completed')
+            `).run(
+                invoiceNumber, customerId, reservation.customer_phone || null, headerLocationId,
             remaining > 0 ? "credit" : "cash",
             total, total, totalPaid, remaining,
             [reservation.notes, "تحويل حجز " + reservation.reservation_number].filter(Boolean).join(" | "),
@@ -2221,15 +2701,27 @@ function initializeBackend() {
             INSERT INTO sale_payments (sale_id, amount, payment_method, notes, created_at)
             VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
         `);
-        const priorReservationPayments = db.prepare(`
-            SELECT amount, payment_method, notes, created_at
+        const reservationPaymentEvents = db.prepare(`
+            SELECT amount, payment_type, payment_method, notes, created_at
             FROM reservation_payments
-            WHERE reservation_id = ? AND payment_type IN ('deposit', 'payment')
+            WHERE reservation_id = ? AND payment_type IN ('deposit', 'payment', 'refund')
             ORDER BY id
         `).all(id);
-        for (const payment of priorReservationPayments) {
+        const carriedPayments = reservationPaymentEvents
+            .filter((payment) => payment.payment_type === "deposit" || payment.payment_type === "payment")
+            .map((payment) => ({ ...payment, remainingAmount: Math.max(0, Number(payment.amount || 0)) }));
+        let refundToAllocate = reservationPaymentEvents
+            .filter((payment) => payment.payment_type === "refund")
+            .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+        for (let index = carriedPayments.length - 1; index >= 0 && refundToAllocate > 0.000001; index -= 1) {
+            const offset = Math.min(carriedPayments[index].remainingAmount, refundToAllocate);
+            carriedPayments[index].remainingAmount = Math.round((carriedPayments[index].remainingAmount - offset) * 100) / 100;
+            refundToAllocate = Math.round((refundToAllocate - offset) * 100) / 100;
+        }
+        for (const payment of carriedPayments) {
+            if (payment.remainingAmount <= 0.000001) continue;
             insertSalePayment.run(
-                saleId, Number(payment.amount), payment.payment_method || "cash",
+                saleId, payment.remainingAmount, payment.payment_method || "cash",
                 payment.notes || "دفعة سابقة على الحجز", payment.created_at || null
             );
         }
@@ -2285,6 +2777,7 @@ function initializeBackend() {
         const date = new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate(), 12, 0, 0, 0);
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     }
+    function workerValidateIsoDate(value) { return workerParseIsoDate(value); }
     function workerParseIsoDate(value) {
         const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
         if (!match) throw new Error("تاريخ بداية العمل غير صحيح");
@@ -2388,7 +2881,7 @@ function initializeBackend() {
         return { worker, cycles, transactions };
     })());
 
-    ipcMain.handle("workers:create", (_event, payload) => db.transaction(() => {
+        ipcMain.handle("workers:create", (_event, payload) => db.transaction(() => {
         if (!payload) throw new Error("أدخل بيانات العامل");
         const name = String(payload.name || "").trim();
         const phone = String(payload.phone || "").trim() || null;
@@ -2397,7 +2890,7 @@ function initializeBackend() {
         const startDate = String(payload.start_date || "").trim();
         if (!name) throw new Error("اسم العامل مطلوب");
         if (!Number.isFinite(salary) || salary <= 0) throw new Error("اكتب مرتبًا شهريًا أكبر من صفر");
-        workerParseIsoDate(startDate);
+        workerValidateIsoDate(startDate);
         const result = db.prepare(`
             INSERT INTO workers (name, phone, job_title, monthly_salary, start_date, payroll_start_date, is_active)
             VALUES (?, ?, ?, ?, ?, ?, 1)
@@ -2416,19 +2909,38 @@ function initializeBackend() {
         const phone = String(payload.phone || "").trim() || null;
         const jobTitle = String(payload.job_title || "").trim() || null;
         const salary = workerRoundMoney(payload.monthly_salary);
+        const startDate = String(payload.start_date || current.start_date || "").trim();
+        if (startDate) {
+            workerValidateIsoDate(startDate);
+        }
         if (!name) throw new Error("اسم العامل مطلوب");
         if (!Number.isFinite(salary) || salary <= 0) throw new Error("اكتب مرتبًا شهريًا أكبر من صفر");
         const isActive = payload.is_active === false || Number(payload.is_active) === 0 ? 0 : 1;
-        db.prepare(`UPDATE workers SET name = ?, phone = ?, job_title = ?, monthly_salary = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-            .run(name, phone, jobTitle, salary, isActive, workerId);
+        db.prepare(`UPDATE workers SET name = ?, phone = ?, job_title = ?, monthly_salary = ?, start_date = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+            .run(name, phone, jobTitle, salary, startDate || current.start_date, isActive, workerId);
+
+        if (startDate && startDate !== current.start_date) {
+            db.prepare(`DELETE FROM worker_payroll_cycles WHERE worker_id = ? AND status = 'open' AND NOT EXISTS (SELECT 1 FROM worker_transactions wt WHERE wt.cycle_id = worker_payroll_cycles.id)`).run(workerId);
+            const updatedWorker = db.prepare(`SELECT * FROM workers WHERE id = ?`).get(workerId);
+            workerEnsurePayrollCycles(updatedWorker, workerIsoDate(new Date()));
+        }
         const today = workerIsoDate(new Date());
-        // Only future, untouched cycles adopt a newly edited salary; the in-progress month keeps its agreed salary snapshot.
         db.prepare(`
             UPDATE worker_payroll_cycles SET salary_amount = ?
             WHERE worker_id = ? AND status = 'open' AND period_start > ?
               AND NOT EXISTS (SELECT 1 FROM worker_transactions wt WHERE wt.cycle_id = worker_payroll_cycles.id)
         `).run(salary, workerId, today);
         return { success: true, id: workerId, is_active: isActive };
+    })());
+
+    ipcMain.handle("workers:setActive", (_event, workerIdInput) => db.transaction(() => {
+        const workerId = Number(workerIdInput);
+        if (!Number.isInteger(workerId) || workerId <= 0) throw new Error("اختر عاملًا صحيحًا");
+        const worker = db.prepare(`SELECT id, is_active FROM workers WHERE id = ?`).get(workerId);
+        if (!worker) throw new Error("العامل غير موجود");
+        if (Number(worker.is_active) !== 1) throw new Error("هذا العامل موقوف بالفعل");
+        db.prepare(`UPDATE workers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(workerId);
+        return { success: true, id: workerId, is_active: 0 };
     })());
 
     ipcMain.handle("workers:addAdvance", (_event, workerIdInput, amountInput, descriptionInput) => db.transaction(() => {
@@ -2525,6 +3037,8 @@ function initializeBackend() {
 
             const customerName =
                 sale.customer_name?.trim() || null;
+            const customerPhone =
+                String(sale.customer_phone || "").trim() || null;
 
 
             const notes =
@@ -2785,9 +3299,13 @@ function initializeBackend() {
             // CUSTOMER
             // =========================
 
-            let customerId = null;
+            let customerId = sale.customer_id ? Number(sale.customer_id) : null;
 
-            if (customerName) {
+            if (customerId && !db.prepare("SELECT id FROM customers WHERE id = ?").get(customerId)) {
+                customerId = null;
+            }
+
+            if (customerName && !customerId) {
                 const existingCustomer =
                     db.prepare(`SELECT id FROM customers WHERE name = ? LIMIT 1`).get(customerName);
                 if (existingCustomer) {
@@ -2815,6 +3333,7 @@ function initializeBackend() {
                 INSERT INTO sales (
                     invoice_number,
                     customer_id,
+                    customer_phone,
                     location_id,
                     sale_type,
                     subtotal,
@@ -2828,10 +3347,11 @@ function initializeBackend() {
                     due_date,
                     status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'completed')
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'completed')
             `).run(
                     invoiceNumber,
                     customerId,
+                    customerPhone,
                     locationRow.id,
                     saleType,
                     subtotal,
@@ -3094,6 +3614,7 @@ function initializeBackend() {
 
             const customerName = order.customer_name?.trim();
             if (!customerName) throw new Error("اسم التاجر مطلوب لطلبيه السباكه");
+            const customerPhone = String(order.customer_phone || "").trim() || null;
 
             const location = order.location === "المخزن" ? "المخزن" : "المعرض";
             const notes = order.notes?.trim() || null;
@@ -3202,6 +3723,7 @@ function initializeBackend() {
             INSERT INTO sales (
                 invoice_number,
                 customer_id,
+                customer_phone,
                 location_id,
                 sale_type,
                 subtotal,
@@ -3214,10 +3736,11 @@ function initializeBackend() {
                 due_date,
                 status
             )
-            VALUES (?, ?, ?, 'plumbing_order', ?, ?, ?, ?, ?, ?, ?, ?, 'completed')
+            VALUES (?, ?, ?, ?, 'plumbing_order', ?, ?, ?, ?, ?, ?, ?, ?, 'completed')
         `).run(
                 invoiceNumber,
                 customerId,
+                customerPhone,
                 locationRow.id,
                 subtotal,
                 traderDiscountPercent,
@@ -3306,12 +3829,162 @@ function initializeBackend() {
             // تحميل الفاتورة القديمة
             const oldSale = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(saleId);
             if (!oldSale) throw new Error("الفاتورة غير موجودة");
-            if (db.prepare("SELECT 1 FROM sales_returns WHERE sale_id = ? LIMIT 1").get(saleId)) {
-                throw new Error("لا يمكن تعديل الفاتورة لوجود مرتجع مرتبط بها");
+            const groupInfo = invoiceGroups.metadata(oldSale);
+            if (groupInfo && groupInfo.kind === "section") {
+                throw new Error("لا يمكن تعديل قسم منفرد، يرجى تعديل الفاتورة المجمعة الأم");
+            }
+            const returnCheckIds = [saleId, ...(groupInfo && groupInfo.kind === "parent" && Array.isArray(groupInfo.sectionIds) ? groupInfo.sectionIds.map(Number) : [])];
+            const returnCheckMarks = returnCheckIds.map(() => "?").join(",");
+            const hasReturns = Boolean(db.prepare(`SELECT 1 FROM sales_returns WHERE sale_id IN (${returnCheckMarks}) LIMIT 1`).get(...returnCheckIds));
+            if (hasReturns) {
+                // مرتجع موجود: أضف أصنافاً جديدة فقط. لا نحذف أو نعيد إنشاء الأصناف القديمة
+                // لأن sales_return_items يرتبط بمعرفاتها، ولا نعيد إنشاء التحصيلات.
+                if (groupInfo && groupInfo.kind === "section") {
+                    throw new Error("لا يمكن تعديل قسم منفرد، يرجى تعديل الفاتورة المجمعة الأم");
+                }
+                if (!sale || !Array.isArray(sale.items) || sale.items.length === 0) {
+                    throw new Error("أضف صنفاً واحداً على الأقل للفاتورة");
+                }
+
+                const relatedIds = [saleId, ...(groupInfo && Array.isArray(groupInfo.sectionIds) ? groupInfo.sectionIds.map(Number) : [])];
+                const relatedMarks = relatedIds.map(() => "?").join(",");
+                const originalItems = db.prepare(`SELECT * FROM sale_items WHERE sale_id IN (${relatedMarks})`).all(...relatedIds);
+                const originalsById = new Map(originalItems.map(item => [Number(item.id), item]));
+                const submittedOriginals = new Map();
+                const additions = [];
+                for (const item of sale.items) {
+                    const itemId = Number(item.id || 0);
+                    if (itemId && originalsById.has(itemId)) {
+                        if (submittedOriginals.has(itemId)) throw new Error("أحد الأصناف الأصلية مكرر");
+                        const old = originalsById.get(itemId);
+                        const same = Number(item.product_id) === Number(old.product_id)
+                            && Math.abs(Number(item.quantity) - Number(old.quantity)) < 0.000001
+                            && Math.abs(Number(item.unit_price) - Number(old.unit_price)) < 0.000001;
+                        if (!same) throw new Error("لا يمكن تعديل الأصناف الأصلية أو حذفها بعد تسجيل مرتجع؛ يمكن إضافة صنف جديد فقط");
+                        submittedOriginals.set(itemId, true);
+                    } else if (!itemId) {
+                        additions.push(item);
+                    } else {
+                        throw new Error("تعذر التحقق من الأصناف الأصلية؛ أعد فتح الفاتورة قبل الحفظ");
+                    }
+                }
+                if (submittedOriginals.size !== originalsById.size) {
+                    throw new Error("لا يمكن حذف الأصناف الأصلية بعد تسجيل مرتجع؛ يمكن إضافة صنف جديد فقط");
+                }
+                const submittedPaid = Number(sale.paid ?? oldSale.paid_amount ?? 0);
+                const customerNameChanged = String(sale.customer_name || "").trim() !== String(oldSale.customer_name || "").trim();
+                const customerPhoneChanged = String(sale.customer_phone || "").trim() !== String(oldSale.customer_phone || "").trim();
+                const notesChanged = String(sale.notes || "").trim() !== String(oldSale.notes || "").trim();
+                const hasAnyChange = additions.length > 0 || Math.abs(submittedPaid - Number(oldSale.paid_amount || 0)) >= 0.000001 || customerNameChanged || customerPhoneChanged || notesChanged;
+                if (!hasAnyChange) {
+                    throw new Error("لم يتم إجراء أي تعديل في الفاتورة");
+                }
+
+                const locationName = sale.location === "المخزن" ? "المخزن" : "المعرض";
+                const locationRow = db.prepare("SELECT id FROM locations WHERE name = ?").get(locationName);
+                if (!locationRow) throw new Error("مكان البيع غير موجود");
+                let addedSubtotal = 0;
+                let addedPlumbing = 0;
+                const preparedAdditions = [];
+                for (const item of additions) {
+                    const productId = Number(item.product_id);
+                    const quantity = Number(item.quantity);
+                    const unitPrice = Number(item.unit_price);
+                    if (!productId || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+                        throw new Error("بيانات الصنف الجديد غير صحيحة");
+                    }
+                    const product = db.prepare(`SELECT p.id, p.name, p.purchase_price, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ? AND p.is_active = 1`).get(productId);
+                    if (!product) throw new Error("أحد المنتجات غير موجود أو غير نشط");
+                    if (oldSale.sale_type === "plumbing_order" && product.category_name !== "سباكة") {
+                        throw new Error(`طلبية سباكة تقبل أصناف سباكة فقط. الصنف "${product.name}" مرفوض`);
+                    }
+                    const stock = db.prepare("SELECT quantity FROM stock WHERE product_id = ? AND location_id = ?").get(productId, locationRow.id);
+                    if (quantity > Number(stock?.quantity || 0)) throw new Error(`الكمية المطلوبة من "${product.name}" أكبر من المتاح في ${locationName}`);
+                    const total = quantity * unitPrice;
+                    addedSubtotal += total;
+                    if (product.category_name === "سباكة") addedPlumbing += total;
+                    preparedAdditions.push({ productId, quantity, unitPrice, total, product, displayQuantity: Number(item.display_quantity ?? quantity), displayUnit: String(item.display_unit || "").trim() || null, displayUnitPrice: Number(item.display_unit_price ?? unitPrice) });
+                }
+
+                const pendingQuantities = new Map();
+                for (const row of preparedAdditions) pendingQuantities.set(row.productId, Number(pendingQuantities.get(row.productId) || 0) + row.quantity);
+                for (const [productId, requested] of pendingQuantities) {
+                    const totalStock = Number(db.prepare("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM stock WHERE product_id = ?").get(productId).quantity || 0);
+                    const reserved = Number(db.prepare("SELECT COALESCE(SUM(ri.quantity), 0) AS quantity FROM reservation_items ri JOIN reservations r ON r.id = ri.reservation_id WHERE ri.product_id = ? AND r.status = 'pending'").get(productId).quantity || 0);
+                    if (requested > totalStock - reserved + 0.000001) throw new Error("الكمية المطلوبة محجوزة لعميل آخر");
+                }
+
+                const plumbingRate = Number(oldSale.plumbing_discount_percent || 0);
+                const traderRate = Number(oldSale.trader_discount_percent || 0);
+                const isPlumbingOrder = oldSale.sale_type === "plumbing_order";
+                const addedDiscount = isPlumbingOrder ? addedSubtotal * traderRate / 100 : addedPlumbing * plumbingRate / 100;
+                const newSubtotal = Number(oldSale.subtotal || 0) + addedSubtotal;
+                const newPlumbingDiscount = Number(oldSale.plumbing_discount_amount || 0) + (isPlumbingOrder ? 0 : addedPlumbing * plumbingRate / 100);
+                const newTraderDiscount = Number(oldSale.trader_discount_amount || 0) + (isPlumbingOrder ? addedSubtotal * traderRate / 100 : 0);
+                const newTotal = Number(oldSale.total_amount || 0) + addedSubtotal - addedDiscount;
+                const paidAmount = Number(sale.paid !== undefined ? sale.paid : (oldSale.paid_amount || 0));
+                const returnTotalAmount = Number(db.prepare("SELECT COALESCE(SUM(total_amount), 0) AS total FROM sales_returns WHERE sale_id = ?").get(saleId)?.total || 0);
+                const newRemaining = Math.max(0, newTotal - returnTotalAmount - paidAmount);
+                const paidDiff = paidAmount - Number(oldSale.paid_amount || 0);
+                const newSaleType = isPlumbingOrder ? "plumbing_order" : (newRemaining > 0.000001 ? "credit" : "cash");
+                const insertAddedItem = db.prepare(`INSERT INTO sale_items (sale_id, product_id, location_id, quantity, unit_price, total_amount, purchase_price, display_quantity, display_unit, display_unit_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+                for (const row of preparedAdditions) {
+                    insertAddedItem.run(saleId, row.productId, locationRow.id, row.quantity, row.unitPrice, row.total, Number(row.product.purchase_price || 0), row.displayQuantity, row.displayUnit, row.displayUnitPrice);
+                    db.prepare("UPDATE stock SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND location_id = ?").run(row.quantity, row.productId, locationRow.id);
+                    db.prepare("INSERT INTO stock_movements (product_id, location_id, movement_type, quantity, reference_type, reference_id, notes) VALUES (?, ?, 'sale', ?, 'sale', ?, ?)").run(row.productId, locationRow.id, -row.quantity, saleId, "إضافة صنف جديد للفاتورة بعد تسجيل مرتجع");
+                }
+                const finalCustomerName = sale.customer_name !== undefined ? String(sale.customer_name || "").trim() : oldSale.customer_name;
+                const finalCustomerPhone = sale.customer_phone !== undefined ? String(sale.customer_phone || "").trim() : oldSale.customer_phone;
+                const finalNotes = sale.notes !== undefined ? String(sale.notes || "").trim() : oldSale.notes;
+                db.prepare("UPDATE sales SET subtotal = ?, plumbing_discount_amount = ?, trader_discount_amount = ?, total_amount = ?, paid_amount = ?, remaining_amount = ?, sale_type = ?, customer_name = ?, customer_phone = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                    .run(newSubtotal, newPlumbingDiscount, newTraderDiscount, newTotal, paidAmount, newRemaining, newSaleType, finalCustomerName, finalCustomerPhone, finalNotes, saleId);
+                if (oldSale.customer_id && (addedSubtotal - addedDiscount) > 0) {
+                    db.prepare("INSERT INTO customer_transactions (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes) VALUES (?, 'sale', 'sale', ?, ?, 0, ?)")
+                        .run(oldSale.customer_id, saleId, addedSubtotal - addedDiscount, `إضافة أصناف للفاتورة ${oldSale.invoice_number} بعد تسجيل مرتجع`);
+                }
+                if (Math.abs(paidDiff) > 0.000001) {
+                    if (paidDiff > 0) {
+                        db.prepare("INSERT INTO sale_payments (sale_id, amount, payment_method, notes) VALUES (?, ?, 'cash', ?)")
+                            .run(saleId, paidDiff, "تحصيل إضافي عند تعديل الفاتورة بعد المرتجع");
+                        const cashAccount = db.prepare("SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' LIMIT 1").get();
+                        const cashAccountId = cashAccount ? cashAccount.id : 1;
+                        db.prepare("INSERT INTO cash_transactions (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description) VALUES (?, 'sale', 'in', ?, 'sale', ?, ?)")
+                            .run(cashAccountId, paidDiff, saleId, `تحصيل إضافي للفاتورة ${oldSale.invoice_number}`);
+                        if (oldSale.customer_id) {
+                            db.prepare("INSERT INTO customer_transactions (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes) VALUES (?, 'payment', 'sale', ?, 0, ?, ?)")
+                                .run(oldSale.customer_id, saleId, paidDiff, `سداد إضافي للفاتورة ${oldSale.invoice_number}`);
+                        }
+                    } else {
+                        const refundAmount = Math.abs(paidDiff);
+                        // مزامنة الرد النقدي مع sales_returns للفاتورة
+                        let remRef = refundAmount;
+                        const openSaleReturns = db.prepare("SELECT id, total_amount, COALESCE(cash_refund_amount, 0) as cash_refund FROM sales_returns WHERE sale_id = ? AND (total_amount - COALESCE(cash_refund_amount, 0)) > 0 ORDER BY id ASC").all(saleId);
+                        for (const r of openSaleReturns) {
+                            if (remRef <= 0) break;
+                            const take = Math.min(r.total_amount - r.cash_refund, remRef);
+                            db.prepare("UPDATE sales_returns SET cash_refund_amount = cash_refund_amount + ?, balance_credit_amount = MAX(0, total_amount - (cash_refund_amount + ?)) WHERE id = ?").run(take, take, r.id);
+                            remRef -= take;
+                        }
+                        const cashAccount = db.prepare("SELECT id FROM cash_accounts WHERE name = 'الخزنة الرئيسية' LIMIT 1").get();
+                        const cashAccountId = cashAccount ? cashAccount.id : 1;
+                        db.prepare("INSERT INTO cash_transactions (cash_account_id, transaction_type, direction, amount, reference_type, reference_id, description) VALUES (?, 'sale', 'out', ?, 'sale', ?, ?)")
+                            .run(cashAccountId, refundAmount, saleId, `رد مبلغ من الفاتورة ${oldSale.invoice_number}`);
+                        if (oldSale.customer_id) {
+                            db.prepare("INSERT INTO customer_transactions (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes) VALUES (?, 'refund', 'sale', ?, ?, 0, ?)")
+                                .run(oldSale.customer_id, saleId, refundAmount, `رد مدفوعات من الفاتورة ${oldSale.invoice_number}`);
+                        }
+                    }
+                }
+                return { success: true, saleId, invoiceNumber: oldSale.invoice_number, total: newTotal, paid: paidAmount, remaining: newRemaining, addedItems: preparedAdditions.length };
             }
 
             // تحميل الأصناف القديمة
-            const oldItems = db.prepare(`SELECT * FROM sale_items WHERE sale_id = ?`).all(saleId);
+            let allRelatedSaleIds = [saleId];
+            if (groupInfo && Array.isArray(groupInfo.sectionIds)) {
+                allRelatedSaleIds = allRelatedSaleIds.concat(groupInfo.sectionIds.map(Number));
+            }
+            const placeholders = allRelatedSaleIds.map(() => '?').join(',');
+            const oldItems = db.prepare(`SELECT * FROM sale_items WHERE sale_id IN (${placeholders})`).all(...allRelatedSaleIds);
 
             // ============================================
             // STEP 1: ROLLBACK (ارجاع المخزون القديم)
@@ -3334,9 +4007,9 @@ function initializeBackend() {
             // ============================================
             // STEP 2: مسح السجلات الثانوية القديمة
             // ============================================
-            db.prepare(`DELETE FROM sale_items WHERE sale_id = ?`).run(saleId);
-            db.prepare(`DELETE FROM sale_payments WHERE sale_id = ?`).run(saleId);
-            db.prepare(`DELETE FROM customer_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);
+            db.prepare(`DELETE FROM sale_items WHERE sale_id IN (${placeholders})`).run(...allRelatedSaleIds);
+            db.prepare(`DELETE FROM sale_payments WHERE sale_id IN (${placeholders})`).run(...allRelatedSaleIds);
+            db.prepare(`DELETE FROM customer_transactions WHERE reference_id IN (${placeholders}) AND reference_type = 'sale'`).run(...allRelatedSaleIds);
             db.prepare(`DELETE FROM cash_transactions WHERE reference_id = ? AND reference_type = 'sale'`).run(saleId);
 
             // ============================================
@@ -3351,6 +4024,7 @@ function initializeBackend() {
 
             const location = sale.location === "المخزن" ? "المخزن" : "المعرض";
             const customerName = sale.customer_name?.trim() || null;
+            const customerPhone = String(sale.customer_phone || "").trim() || null;
             const notes = sale.notes?.trim() || null;
             const dueDate = String(sale.due_date || "").trim() || null;
 
@@ -3487,6 +4161,7 @@ preparedItems.push({
             db.prepare(`
             UPDATE sales SET
                 customer_id = ?,
+                customer_phone = ?,
                 location_id = ?,
                 sale_type = ?,
                 subtotal = ?,
@@ -3504,6 +4179,7 @@ preparedItems.push({
             WHERE id = ?
         `).run(
                 customerId,
+                customerPhone,
                 locationRow.id,
                 saleType,
                 subtotal,
@@ -3514,7 +4190,9 @@ preparedItems.push({
                 grandTotal,
                 paid,
                 remaining,
-                notes,
+                (groupInfo && groupInfo.kind === "parent")
+                    ? invoiceGroups.encode({ ...groupInfo, originalNotes: notes || "" })
+                    : notes,
                 dueDate,
                 saleId
             );
@@ -3598,6 +4276,29 @@ insertItem.run(
                         (customer_id, transaction_type, reference_type, reference_id, debit, credit, notes)
                     VALUES (?, 'payment', 'sale', ?, 0, ?, ?)
                 `).run(customerId, saleId, paid, `دفع على فاتورة ${invoiceNumber} (بعد تعديل)`);
+                }
+            }
+            // ============================================
+            // STEP 8: توزيع السداد على الفواتير المدمجة (Consolidated Sections)
+            // ============================================
+            if (groupInfo && groupInfo.kind === "parent" && Array.isArray(groupInfo.sectionIds) && groupInfo.sectionIds.length > 0) {
+                let remainingPaidToAllocate = paid;
+                for (const secId of groupInfo.sectionIds) {
+                    const sec = db.prepare(`SELECT * FROM sales WHERE id = ?`).get(Number(secId));
+                    if (!sec) continue;
+                    const secTotal = Number(sec.total_amount || 0);
+                    const secPaid = Math.min(secTotal, Math.max(0, remainingPaidToAllocate));
+                    const secRemaining = Math.max(0, Math.round((secTotal - secPaid) * 100) / 100);
+                    remainingPaidToAllocate = Math.max(0, Math.round((remainingPaidToAllocate - secPaid) * 100) / 100);
+
+                    db.prepare(`
+                        UPDATE sales
+                        SET paid_amount = ?,
+                            remaining_amount = ?,
+                            sale_type = ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    `).run(secPaid, secRemaining, secRemaining > 0.000001 ? "credit" : "cash", sec.id);
                 }
             }
 
@@ -3691,16 +4392,10 @@ const { verifyLicense } = require("./src/license-validator");
 
 app.whenReady().then(async () => {
     try {
-        const license = verifyLicense();
-        if (!license.valid) {
-            dialog.showErrorBox(
-                "النظام غير مرخص - نظام إدارة الشرق",
-                `عذراً، هذا النظام محمي بحقوق الملكية الفكرية.\n\nمعرف جهازك: ${license.machineId}\nالحالة: ${license.reason}\n\nللحصول على ترخيص التشغيل يرجى التواصل مع المطور:\nيعقوب أشرف\nEmail: jacobashraf6@gmail.com`
-            );
-            app.quit();
-            return;
+        if (app.isPackaged) {
+            const license = verifyLicense();
+            // تم إلغاء شرط التحقق من الترخيص
         }
-
         await createSplashWindow();
         if (startupHasFailed) return;
 
@@ -3770,3 +4465,4 @@ app.on(
 );
 
 module.exports = { initializeBackend };
+

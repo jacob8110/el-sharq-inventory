@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
     const escape = (value) => String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
@@ -11,6 +11,7 @@
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     };
+    const localDateForChart = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     const dateText = (value) => value
         ? new Date(value).toLocaleString("ar-EG")
         : "-";
@@ -234,7 +235,8 @@
             <input id="purchaseSalePrice" type="number" min="0.01" step="0.01" placeholder="سعر القطاعي">
             <small id="purchaseSalePriceHint" class="purchase-net-preview">القطاعي بالنظام: — | الجديد: —</small>
         </div>
-                <div class="purchase-field-btn">
+        <div class="purchase-field-btn">
+            <button class="secondary-button" id="purchaseUseOldPrices" type="button" disabled>ملء الأسعار القديمة</button>
             <button class="primary-button" id="purchaseAddItem" type="button">إضافة الصنف</button>
         </div>
     </div>
@@ -329,6 +331,7 @@
         const wholesaleInput = page.querySelector("#purchaseCost");
         const retailInput = page.querySelector("#purchaseSalePrice");
         const listPriceInput = page.querySelector("#purchaseListPrice");
+        const useOldPricesButton = page.querySelector("#purchaseUseOldPrices");
         const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
         const getDefaultDiscount = () => {
             const raw = discountDefaultInput.value.trim();
@@ -337,20 +340,91 @@
             return Number.isFinite(value) && value >= 0 && value <= 100 ? value : NaN;
         };
         let selectedAutoDiscount = false;
+        const oldPositivePrice = (value) => {
+            const amount = Number(value);
+            return Number.isFinite(amount) && amount > 0 ? String(amount) : "";
+        };
+        const getOldCeramicMeterPrices = (product) => {
+            const tileArea = (Number(product.tile_length_cm || 0) * Number(product.tile_width_cm || 0)) / 10000;
+            const cartonArea = tileArea * Number(product.tiles_per_carton || 0);
+            const wholesale = product.ceramic_purchase_price_per_sqm != null
+                ? Number(product.ceramic_purchase_price_per_sqm)
+                : product.unit === "متر" ? Number(product.purchase_price || 0)
+                : product.unit === "بلاطة" && tileArea > 0 ? Number(product.purchase_price || 0) / tileArea
+                : cartonArea > 0 ? Number(product.purchase_price || 0) / cartonArea : null;
+            const retail = cartonArea > 0 ? Number(product.sale_price || 0) / cartonArea : null;
+            return { wholesale, retail };
+        };
+        const fillOldPurchasePrices = () => {
+            const product = products.find((item) => Number(item.id) === Number(productSelect.value));
+            if (!product) {
+                updateSelectedPricing();
+                return;
+            }
+            const discount = getDefaultDiscount();
+            const isCeramic = String(product.category_name || "").trim() === "سيراميك";
+            const autoDiscount = !isCeramic && discount !== null && Number.isFinite(discount);
+            if (isCeramic) {
+                const oldPrices = getOldCeramicMeterPrices(product);
+                wholesaleInput.value = oldPositivePrice(oldPrices.wholesale);
+                retailInput.value = oldPositivePrice(oldPrices.retail);
+                listPriceInput.value = "";
+            } else if (autoDiscount) {
+                // Keep the entered invoice discount; the saved retail/list price is the default.
+                wholesaleInput.value = "";
+                retailInput.value = "";
+                listPriceInput.value = oldPositivePrice(product.sale_price);
+            } else {
+                wholesaleInput.value = oldPositivePrice(product.purchase_price);
+                retailInput.value = oldPositivePrice(product.sale_price);
+                listPriceInput.value = "";
+            }
+            updateSelectedPricing();
+        };
         const updateSelectedPricing = ({ resetValues = false } = {}) => {
             const product = products.find((item) => Number(item.id) === Number(productSelect.value));
             const discount = getDefaultDiscount();
-            const autoDiscount = discount !== null && Number.isFinite(discount);
-            if (resetValues || (product && autoDiscount !== selectedAutoDiscount)) {
-                // Switching item or pricing mode clears entry fields to avoid carrying prices into another item/mode.
+            const isCeramic = String(product?.category_name || "").trim() === "سيراميك";
+            const autoDiscount = !isCeramic && discount !== null && Number.isFinite(discount);
+            useOldPricesButton.disabled = !product;
+            if (resetValues) {
                 wholesaleInput.value = "";
                 retailInput.value = "";
                 listPriceInput.value = "";
+            } else if (product && autoDiscount !== selectedAutoDiscount) {
+                // Switching pricing mode keeps the prior retail value as the editable list price.
+                if (autoDiscount) {
+                    listPriceInput.value = retailInput.value.trim() || oldPositivePrice(product.sale_price);
+                    wholesaleInput.value = "";
+                    retailInput.value = "";
+                } else {
+                    retailInput.value = listPriceInput.value.trim() || oldPositivePrice(product.sale_price);
+                    wholesaleInput.value = oldPositivePrice(product.purchase_price);
+                    listPriceInput.value = "";
+                }
             }
             selectedAutoDiscount = autoDiscount;
             page.querySelector("#purchaseCostField").hidden = autoDiscount;
             page.querySelector("#purchaseListPriceField").hidden = !autoDiscount;
             page.querySelector("#purchaseSalePriceField").hidden = autoDiscount;
+            if (isCeramic) {
+                const { wholesale: oldWholesale, retail: oldRetail } = getOldCeramicMeterPrices(product);
+                const newWholesale = wholesaleInput.value.trim() ? Number(wholesaleInput.value) : null;
+                const newRetail = retailInput.value.trim() ? Number(retailInput.value) : null;
+                const format = (value) => value == null || !Number.isFinite(value) ? "غير متاح" : `${money(value)} ج.م`;
+                page.querySelector('label[for="purchaseCost"]').textContent = "سعر الجملة للمتر المربع";
+                page.querySelector('label[for="purchaseSalePrice"]').textContent = "سعر القطاعي للمتر المربع";
+                page.querySelector("#purchaseQty").placeholder = "الكمية بالمتر المربع";
+                page.querySelector("#purchasePurchasePriceHint").textContent = `الجملة القديمة بالمتر المربع: ${format(oldWholesale)} | الجديدة: ${format(newWholesale)}`;
+                page.querySelector("#purchaseSalePriceHint").textContent = `القطاعي القديم بالمتر المربع: ${format(oldRetail)} | الجديد: ${format(newRetail)}`;
+                page.querySelector("#purchaseNetCostPreview").textContent = "أدخل سعر الجملة للمتر المربع";
+                page.querySelector("#purchaseListPricePreview").textContent = "";
+                page.querySelector("#purchaseListHints").textContent = "";
+                return;
+            }
+            page.querySelector('label[for="purchaseCost"]').textContent = "سعر الشراء (جملة)";
+            page.querySelector('label[for="purchaseSalePrice"]').textContent = "سعر البيع القطاعي";
+            page.querySelector("#purchaseQty").placeholder = "الكمية";
             const listPriceRaw = autoDiscount ? listPriceInput.value : retailInput.value;
             const listPrice = Number(listPriceRaw);
             const newWholesale = autoDiscount
@@ -429,10 +503,14 @@
         productSelect.addEventListener("change", () => {
             const selected = productSelect.selectedOptions[0];
             const product = products.find((item) => Number(item.id) === Number(productSelect.value));
-            const isMeter = (selected?.dataset.unit || product?.unit) === "متر";
-            page.querySelector("#purchaseQtyLabel").textContent = isMeter ? "الكمية بالمتر" : "الكمية";
+            const unit = selected?.dataset.unit || product?.unit || "قطعة";
+            page.querySelector("#purchaseQtyLabel").textContent =
+                product?.category_name === "سيراميك" ? "الكمية بالمتر المربع"
+                    : unit === "متر" ? "الكمية بالمتر" : unit === "كيلو" ? "الكمية بالكيلو" : "الكمية";
             updateSelectedPricing({ resetValues: true });
+            fillOldPurchasePrices();
         });
+        useOldPricesButton.addEventListener("click", fillOldPurchasePrices);
         wholesaleInput.addEventListener("input", () => updateSelectedPricing());
         retailInput.addEventListener("input", () => updateSelectedPricing());
         listPriceInput.addEventListener("input", () => updateSelectedPricing());
@@ -485,9 +563,29 @@
                 status("purchaseMessage", "اختر الصنف وأدخل كمية صحيحة", true);
                 return;
             }
-            const pricingMode = discount === null ? "manual" : "discount";
+            const isCeramic = String(product.category_name || "").trim() === "سيراميك";
+            const pricingMode = isCeramic ? "ceramic_meter" : (discount === null ? "manual" : "discount");
             let unitCost, listPrice, salePrice;
-            if (pricingMode === "discount") {
+            if (isCeramic) {
+                const cartonArea = (Number(product.tile_length_cm || 0) * Number(product.tile_width_cm || 0) / 10000) * Number(product.tiles_per_carton || 0);
+                if (!(cartonArea > 0)) {
+                    status("purchaseMessage", "أكمل مقاس البلاطة وعدد البلاطات بالكرتونة في بيانات الصنف أولًا", true);
+                    return;
+                }
+                unitCost = Number(wholesaleInput.value);
+                salePrice = Number(retailInput.value);
+                if (!wholesaleInput.value.trim() || !Number.isFinite(unitCost) || unitCost <= 0) {
+                    status("purchaseMessage", "أدخل سعر الجملة للمتر المربع صحيحًا", true);
+                    wholesaleInput.focus();
+                    return;
+                }
+                if (!retailInput.value.trim() || !Number.isFinite(salePrice) || salePrice <= 0) {
+                    status("purchaseMessage", "أدخل سعر القطاعي للمتر المربع صحيحًا", true);
+                    retailInput.focus();
+                    return;
+                }
+                listPrice = salePrice;
+            } else if (pricingMode === "discount") {
                 listPrice = Number(listPriceInput.value);
                 if (!listPriceInput.value.trim() || !Number.isFinite(listPrice) || listPrice <= 0) {
                     status("purchaseMessage", "أدخل سعر القطاعي / الليستة الصحيح", true);
@@ -516,7 +614,7 @@
                 name: product.name,
                 category_name: product.category_name || "غير مصنف",
                 quantity,
-                unit: product.unit || "قطعة",
+                unit: isCeramic ? "متر مربع" : (product.unit || "قطعة"),
                 unit_cost: unitCost,
                 pricing_mode: pricingMode,
                 discount_percent: discount,
@@ -554,9 +652,11 @@
                     items
                 });
                 purchaseSaved = true;
+                const purchaseInvoiceSettings = await window.elSharq.getSettings().catch(() => ({}));
                 status("purchaseMessage", `تم حفظ الفاتورة ${result.invoiceNumber}`);
                 try {
                     window.elSharqInvoicePrint.print(printWindow, {
+                        store_owner_name: purchaseInvoiceSettings.store_owner_name,
                         type: "purchase",
                         invoice_number: result.invoiceNumber,
                         created_at: new Date().toISOString(),
@@ -603,8 +703,10 @@
                 try {
                     printWindow = window.elSharqInvoicePrint.open();
                     const invoice = await window.elSharq.getPurchaseById(Number(printButton.dataset.printPurchaseId));
+                    const invoiceSettings = await window.elSharq.getSettings().catch(() => ({}));
                     window.elSharqInvoicePrint.print(printWindow, {
                         ...invoice,
+                        store_owner_name: invoiceSettings.store_owner_name,
                         type: "purchase",
                         partyName: invoice.supplier_name || "مورد نقدي",
                         items: invoice.items
@@ -738,9 +840,9 @@
             const adjustUnit = page.querySelector("#adjustProduct").selectedOptions[0]?.dataset.unit || "قطعة";
             const transferUnit = page.querySelector("#transferProduct").selectedOptions[0]?.dataset.unit || "قطعة";
             page.querySelector("#adjustQuantityLabel").textContent =
-                adjustUnit === "متر" ? "الرصيد الفعلي (متر)" : "الرصيد الفعلي";
+                adjustUnit === "متر" ? "الرصيد الفعلي (متر)" : adjustUnit === "كيلو" ? "الرصيد الفعلي (كيلو)" : "الرصيد الفعلي";
             page.querySelector("#transferQuantityLabel").textContent =
-                transferUnit === "متر" ? "الكمية بالمتر" : "الكمية";
+                transferUnit === "متر" ? "الكمية بالمتر" : transferUnit === "كيلو" ? "الكمية بالكيلو" : "الكمية";
         };
         page.querySelector("#transferFrom").addEventListener("change", () => {
             transferProductPicker.clear();
@@ -824,7 +926,7 @@
             <div class="sales-panel">
                 <div class="sales-panel-header"><div><h3>${isCustomer ? "تحصيل دفعة من عميل" : "سداد دفعة لمورد"}</h3><span>يتم تحديث متبقي الفاتورة والحساب والخزنة تلقائيًا</span></div></div>
                 <form id="accountPaymentForm" class="sale-info-grid">
-                    <div class="form-field"><label>الفاتورة المستحقة</label><select id="accountPaymentInvoice" required><option value="">اختر الفاتورة</option>${outstanding.map((i) => `<option value="${i.id}" data-remaining="${i.remaining}">${escape(i.invoice_number)} — ${escape(i.contact_name)} — باقي ${money(i.remaining)} ج.م</option>`).join("")}</select></div>
+                    <div class="form-field"><label>الفاتورة المستحقة</label><div style="position:relative;width:100%;"><input id="accountPaymentInvoiceSearch" type="search" autocomplete="off" aria-label="بحث عن فاتورة" placeholder="ابحث باسم ${isCustomer ? 'العميل' : 'المورد'} أو رقم الفاتورة..." style="width:100%;box-sizing:border-box;"><div id="accountPaymentInvoiceResults" role="listbox" aria-live="polite" hidden style="position:absolute;top:100%;left:0;right:0;z-index:1000;max-height:260px;overflow:auto;background:#17232d;border:1px solid #405462;border-radius:8px;box-shadow:0 8px 22px rgba(0,0,0,.3);"></div></div><div style="display:none;"><select id="accountPaymentInvoice" aria-hidden="true" tabindex="-1"><option value="">اختر الفاتورة</option>${outstanding.map((i) => `<option value="${i.id}" data-remaining="${i.remaining}">${escape(i.invoice_number)} — ${escape(i.contact_name)} — باقي ${money(i.remaining)} ج.م</option>`).join("")}</select></div></div>
                     <div class="form-field"><label>مبلغ ${isCustomer ? "التحصيل" : "السداد"}</label><input id="accountPaymentAmount" type="number" min="0.01" step="0.01" required></div>
                     <div id="paymentMessage" class="product-form-message"></div>
                     <button class="primary-button" type="submit">${isCustomer ? "تحصيل المبلغ" : "تسجيل السداد"}</button>
@@ -843,20 +945,68 @@
                     <button class="secondary-button" id="contactCancel" type="button" hidden>إلغاء التعديل</button>
                 </form>
             </div>
-            <div class="products-panel"><div class="products-table-wrapper"><table class="products-table"><thead><tr><th>الاسم</th><th>الهاتف</th><th>العنوان</th><th>الرصيد الحالي</th><th>ملاحظات</th><th>إجراءات</th></tr></thead><tbody>${records.map((r) => `<tr><td>${escape(r.name)}</td><td>${escape(r.phone || "-")}</td><td>${escape(r.address || "-")}</td><td>${money(r.balance)} ج.م</td><td>${escape(r.notes || "-")}</td><td><button type="button" data-edit-contact="${r.id}">تعديل</button></td></tr>`).join("") || '<tr><td colspan="6">لا توجد سجلات</td></tr>'}</tbody></table></div></div>
+            <div class="products-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="position:relative;flex:1;max-width:420px;">
+            <input id="contactTableSearchInput" type="search" placeholder="بحث ذكي في ${isCustomer ? 'العملاء' : 'الموردين'} (بالاسم أو الهاتف أو العنوان)..." style="width:100%;padding:9px 14px;border-radius:8px;border:1px solid #405462;background:#17232d;color:#fff;font-size:13px;box-sizing:border-box;">
+        </div>
+        <span id="contactTableCount" style="font-size:12px;color:#a9bac6;font-weight:bold;">إجمالي: ${records.length}</span>
+    </div>
+    <div class="products-table-wrapper"><table class="products-table" id="contactsDataTable"><thead><tr><th>الاسم</th><th>الهاتف</th><th>العنوان</th><th>الرصيد الحالي</th><th>ملاحظات</th><th>إجراءات</th></tr></thead><tbody>${records.map((r) => `<tr><td>${escape(r.name)}</td><td>${escape(r.phone || "-")}</td><td>${escape(r.address || "-")}</td><td>${Number(r.balance) < -0.000001 ? (isCustomer ? `<span style="color:#ffb74d;font-weight:bold;background:rgba(255,183,77,0.12);padding:3px 8px;border-radius:6px;display:inline-block;">دائن: له ${money(Math.abs(r.balance))} ج.م</span>` : `<span style="color:#4fc3f7;font-weight:bold;">مستحق له: ${money(Math.abs(r.balance))} ج.م</span>`) : (Number(r.balance) > 0.000001 ? `<strong class="remaining-danger">${money(r.balance)} ج.م</strong>` : `<span style="color:#888;">0.00 ج.م</span>`)}</td><td>${escape(r.notes || "-")}</td><td><button type="button" data-edit-contact="${r.id}">تعديل</button></td></tr>`).join("") || '<tr><td colspan="6">لا توجد سجلات</td></tr>'}</tbody></table></div></div>
         `);
         page.querySelector("#openReceivablesButton")?.addEventListener("click", () => {
             document.querySelector('[data-nav="receivables"]')?.click();
         });
         const paymentInvoice = page.querySelector("#accountPaymentInvoice");
+        const paymentInvoiceSearch = page.querySelector("#accountPaymentInvoiceSearch");
+        const paymentInvoiceResults = page.querySelector("#accountPaymentInvoiceResults");
+        const paymentAmount = page.querySelector("#accountPaymentAmount");
+        const renderCustomerInvoiceResults = () => {
+            if (!paymentInvoiceSearch || !paymentInvoiceResults) return;
+            const query = paymentInvoiceSearch.value.trim().toLocaleLowerCase();
+            const matches = query ? outstanding.filter((invoice) =>
+                `${invoice.invoice_number || ""} ${invoice.contact_name || ""}`.toLocaleLowerCase().includes(query)
+            ).slice(0, 12) : [];
+            paymentInvoiceResults.innerHTML = matches.length
+                ? matches.map((invoice) => `<button type="button" role="option" data-customer-invoice-result="${invoice.id}" style="display:block;width:100%;padding:10px 12px;text-align:right;color:#e6eef3;background:transparent;border:0;border-bottom:1px solid #30414d;cursor:pointer;">${escape(invoice.invoice_number || "-")} — ${escape(invoice.contact_name || "عميل")} — باقي ${money(invoice.remaining)} ج.م</button>`).join("")
+                : query ? `<div style="padding:10px 12px;color:#a9bac6;">\u0644\u0627 \u062A\u0648\u062C\u062F \u0646\u062A\u0627\u0626\u062C \u0645\u0637\u0627\u0628\u0642\u0629</div>` : "";
+            paymentInvoiceResults.hidden = !query;
+        };
+        paymentInvoiceSearch?.addEventListener("input", () => {
+            paymentInvoice.value = "";
+            paymentAmount.value = "";
+            paymentAmount.max = "";
+            renderCustomerInvoiceResults();
+        });
+        paymentInvoiceResults?.addEventListener("click", (event) => {
+            const result = event.target.closest("[data-customer-invoice-result]");
+            if (!result) return;
+            const invoice = outstanding.find((item) => String(item.id) === String(result.dataset.customerInvoiceResult));
+            if (!invoice) return;
+            paymentInvoice.value = String(invoice.id);
+            paymentInvoiceSearch.value = `${invoice.invoice_number || "-"} — ${invoice.contact_name || (isCustomer ? "عميل" : "مورد")}`;
+            paymentAmount.max = invoice.remaining || "";
+            paymentAmount.value = invoice.remaining || "";
+            paymentInvoiceResults.hidden = true;
+            paymentInvoice.dispatchEvent(new Event("change"));
+        });
+        paymentInvoiceSearch?.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            const firstResult = paymentInvoiceResults?.querySelector("[data-customer-invoice-result]");
+            if (firstResult) {
+                event.preventDefault();
+                firstResult.click();
+            }
+        });
         paymentInvoice.addEventListener("change", () => {
             const remaining = paymentInvoice.selectedOptions[0]?.dataset.remaining;
-            page.querySelector("#accountPaymentAmount").max = remaining || "";
-            page.querySelector("#accountPaymentAmount").value = remaining || "";
+            paymentAmount.max = remaining || "";
+            paymentAmount.value = remaining || "";
         });
         page.querySelector("#accountPaymentForm").addEventListener("submit", async (event) => {
             event.preventDefault();
             try {
+                if (!paymentInvoice.value) throw new Error("\u0627\u0628\u062D\u062B \u0639\u0646 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0648\u0627\u062E\u062A\u0631 \u0646\u062A\u064A\u062C\u0629 \u0645\u0646 \u0627\u0644\u0642\u0627\u0626\u0645\u0629.");
                 await window.elSharq.recordAccountPayment(
                     entity,
                     paymentInvoice.value,
@@ -901,8 +1051,12 @@
         });
     }
 
-    async function receivables() {
-        const invoices = await window.elSharq.getOutstandingInvoices("customers");
+            async function receivables(preferredTab = "receivables") {
+        let activeTab = preferredTab;
+        const [invoices, payables] = await Promise.all([
+            window.elSharq.getOutstandingInvoices("customers"),
+            window.elSharq.getCustomerPayables ? window.elSharq.getCustomerPayables() : Promise.resolve([])
+        ]);
         const today = localDate();
         const openInvoices = invoices.filter((invoice) => Number(invoice.remaining || 0) > 0.000001);
         const dueToday = openInvoices.filter((invoice) => String(invoice.due_date || "").slice(0, 10) === today);
@@ -910,9 +1064,20 @@
             const due = String(invoice.due_date || "").slice(0, 10);
             return due && due < today;
         });
-        const totalRemaining = openInvoices.reduce((sum, invoice) => sum + Number(invoice.remaining || 0), 0);
+        // الصافي على مستوى حساب العميل: الرصيد الدائن بيتخصم مرة واحدة لكل عميل من إجمالي المستحقات
+        const creditOffsetByCustomer = new Map();
+        openInvoices.forEach((invoice) => {
+            const offset = Number(invoice.account_credit_offset || 0);
+            if (invoice.contact_id && offset > 0.000001) creditOffsetByCustomer.set(String(invoice.contact_id), offset);
+        });
+        const totalCreditOffset = [...creditOffsetByCustomer.values()].reduce((sum, value) => sum + value, 0);
+        const totalRemaining = Math.max(0, openInvoices.reduce((sum, invoice) => sum + Number(invoice.remaining || 0), 0) - totalCreditOffset);
         const todayRemaining = dueToday.reduce((sum, invoice) => sum + Number(invoice.remaining || 0), 0);
         const overdueRemaining = overdue.reduce((sum, invoice) => sum + Number(invoice.remaining || 0), 0);
+
+        const payablesList = Array.isArray(payables) ? payables : [];
+        const totalPayablesAmount = payablesList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
         const dateLabel = (value) => {
             const raw = String(value || "").slice(0, 10);
             if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "من غير ميعاد";
@@ -920,6 +1085,9 @@
             return new Date(year, month - 1, day).toLocaleDateString("ar-EG");
         };
         const stateFor = (invoice) => {
+            if (invoice.is_opening || String(invoice.id).startsWith("opening-")) {
+                return { label: "رصيد قديم", css: "status active" };
+            }
             const due = String(invoice.due_date || "").slice(0, 10);
             if (!due) return { label: "من غير ميعاد", css: "status inactive" };
             if (due < today) return { label: "متأخر", css: "status inactive" };
@@ -929,80 +1097,221 @@
         const sortedInvoices = [...openInvoices].sort((a, b) => {
             const da = String(a.due_date || "9999-12-31").slice(0, 10);
             const db = String(b.due_date || "9999-12-31").slice(0, 10);
-            return da.localeCompare(db) || Number(b.id) - Number(a.id);
+            return da.localeCompare(db) || String(b.id).localeCompare(String(a.id));
         });
-        const page = content("المستحقات", "تابع إجمالي المبالغ المتبقية، ومواعيد السداد المحددة، والفواتير المتأخرة.", `
-            <div class="page-header"><div></div><button type="button" class="secondary-button" id="backToCustomersButton">العودة للعملاء</button></div>
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-icon cash">ج</div><div><span>إجمالي مستحقات العملاء</span><strong>${money(totalRemaining)} ج.م</strong></div></div>
-                <div class="stat-card"><div class="stat-icon invoices">◷</div><div><span>المستحق اليوم (${dueToday.length} فاتورة)</span><strong>${money(todayRemaining)} ج.م</strong></div></div>
-                <div class="stat-card"><div class="stat-icon profit">!</div><div><span>المتأخر (${overdue.length} فاتورة)</span><strong>${money(overdueRemaining)} ج.م</strong></div></div>
+
+        const page = content("المستحقات", "متابعة المبالغ المطلوبة من العملاء، والمبالغ المستحقة للعملاء على المحل.", `
+            <div class="page-header">
+                <div></div>
+                <button type="button" class="secondary-button" id="backToCustomersButton">العودة للعملاء</button>
             </div>
-            <div class="last-invoices-panel">
-                <div class="last-invoices-panel-header"><div><h3>الفواتير ذات الأرصدة المفتوحة</h3><span>${openInvoices.length} فاتورة، تشمل الفواتير من غير موعد</span></div></div>
-                <div class="last-invoices-table-wrapper"><table class="last-invoices-table">
-                    <thead><tr><th>العميل</th><th>رقم الفاتورة</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>ميعاد السداد</th><th>الحالة</th><th>إجراء</th></tr></thead>
-                    <tbody>${sortedInvoices.map((invoice) => {
-                        const state = stateFor(invoice);
-                        return `<tr>
-                            <td><strong>${escape(invoice.contact_name || "عميل")}</strong></td>
-                            <td>${escape(invoice.invoice_number || "-")}</td>
-                            <td>${money(invoice.total)} ج.م</td>
-                            <td>${money(invoice.paid)} ج.م</td>
-                            <td><strong class="remaining-danger">${money(invoice.remaining)} ج.م</strong></td>
-                            <td>${dateLabel(invoice.due_date)}</td>
-                            <td><span class="${state.css}">${state.label}</span></td>
-                            <td data-receivable-actions="${Number(invoice.id)}"><button type="button" class="edit-btn" data-receivable-pay="${Number(invoice.id)}">تحصيل دفعة</button></td>
-                        </tr>`;
-                    }).join("") || `<tr><td colspan="8"><div class="table-empty"><strong>لا توجد مستحقات مفتوحة</strong><span>الفواتير التي لم تُسدّد بالكامل ستظهر هنا</span></div></td></tr>`}</tbody>
-                </table></div>
+
+            <div class="dues-tabs" style="display:flex;gap:12px;margin:18px 0 24px 0">
+                <button type="button" class="${activeTab === "receivables" ? "primary-button" : "secondary-button"}" data-dues-tab="receivables" style="padding:10px 22px;font-size:14px;font-weight:700">
+                    <span>مستحقات لنا على العملاء</span>
+                    <span class="badge" style="margin-right:8px;background:rgba(255,255,255,0.18);padding:2px 8px;border-radius:10px;font-size:12px">${openInvoices.length}</span>
+                </button>
+                <button type="button" class="${activeTab === "payables" ? "primary-button" : "secondary-button"}" data-dues-tab="payables" style="padding:10px 22px;font-size:14px;font-weight:700">
+                    <span>مستحقات للعملاء على المحل</span>
+                    <span class="badge" style="margin-right:8px;background:rgba(255,255,255,0.18);padding:2px 8px;border-radius:10px;font-size:12px">${payablesList.length}</span>
+                </button>
             </div>
+
+            <!-- TAB 1: RECEIVABLES PANEL -->
+            <section data-dues-panel="receivables" ${activeTab !== "receivables" ? "hidden" : ""}>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-icon cash">ج</div><div><span>إجمالي مستحقات العملاء (الصافي)</span><strong>${money(totalRemaining)} ج.م</strong></div></div>
+                    <div class="stat-card"><div class="stat-icon invoices">◷</div><div><span>المستحق اليوم (${dueToday.length} فاتورة)</span><strong>${money(todayRemaining)} ج.م</strong></div></div>
+                    <div class="stat-card"><div class="stat-icon profit">!</div><div><span>المتأخر (${overdue.length} فاتورة)</span><strong>${money(overdueRemaining)} ج.م</strong></div></div>
+                </div>
+                <div class="last-invoices-panel">
+                    <div class="last-invoices-panel-header"><div><h3>الفواتير ذات الأرصدة المفتوحة (مطلوبة من العملاء)</h3><span>${openInvoices.length} فاتورة، تشمل الفواتير من غير موعد</span></div></div>
+                    <div class="last-invoices-table-wrapper"><table class="last-invoices-table">
+                        <thead><tr><th>العميل</th><th>رقم الفاتورة</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>ميعاد السداد</th><th>الحالة</th><th>إجراء</th></tr></thead>
+                        <tbody>${sortedInvoices.map((invoice) => {
+                            const state = stateFor(invoice);
+                            return `<tr>
+                                <td><strong>${escape(invoice.contact_name || "عميل")}</strong></td>
+                                <td>${escape(invoice.invoice_number || "-")}</td>
+                                <td>${money(invoice.total)} ج.م</td>
+                                <td>${money(invoice.paid)} ج.م</td>
+                                <td><strong class="remaining-danger">${money(invoice.remaining)} ج.م</strong>${Number(invoice.account_credit_offset || 0) > 0.000001 ? `<div style="font-size:11px;color:#22c55e;margin-top:4px">للعميل رصيد دائن ${money(invoice.account_credit_offset)} ج.م — صافي حسابه ${money(invoice.account_net || 0)} ج.م</div>` : ""}</td>
+                                <td>${dateLabel(invoice.due_date)}</td>
+                                <td><span class="${state.css}">${state.label}</span></td>
+                                <td data-receivable-actions="${escape(invoice.id)}"><button type="button" class="edit-btn" data-receivable-pay="${escape(invoice.id)}">تحصيل دفعة</button></td>
+                            </tr>`;
+                        }).join("") || `<tr><td colspan="8"><div class="table-empty"><strong>لا توجد مستحقات مفتوحة</strong><span>الفواتير التي لم تُسدّد بالكامل ستظهر هنا</span></div></td></tr>`}</tbody>
+                    </table></div>
+                </div>
+            </section>
+
+            <!-- TAB 2: PAYABLES PANEL -->
+            <section data-dues-panel="payables" ${activeTab !== "payables" ? "hidden" : ""}>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-icon cash" style="color:#22c55e">✓</div><div><span>إجمالي المبالغ المستحقة للعملاء</span><strong style="color:#22c55e">${money(totalPayablesAmount)} ج.م</strong></div></div>
+                    <div class="stat-card"><div class="stat-icon invoices">👥</div><div><span>عدد الحسابات المستحقة للرد</span><strong>${payablesList.length} مستحق</strong></div></div>
+                </div>
+                <div class="last-invoices-panel">
+                    <div class="last-invoices-panel-header"><div><h3>المبالغ المستحقة للعملاء طرف المحل (دائنون)</h3><span>أرصدة دائنة ناتجة عن مرتجعات فواتير أو دفعات زائدة</span></div></div>
+                    <div class="last-invoices-table-wrapper"><table class="last-invoices-table">
+                        <thead><tr><th>العميل</th><th>الهاتف</th><th>الفاتورة / المرجع</th><th>المبلغ المستحق للعميل</th><th>البيان / السبب</th><th>التاريخ</th><th>إجراء</th></tr></thead>
+                        <tbody>${payablesList.map((item) => {
+                            return `<tr>
+                                <td><strong>${escape(item.customer_name || "عميل")}</strong></td>
+                                <td>${escape(item.phone || "-")}</td>
+                                <td>${escape(item.invoice_number || "-")}</td>
+                                <td><strong style="color:#22c55e;font-size:15px">${money(item.amount)} ج.م</strong></td>
+                                <td><span class="status active">${escape(item.reason || "رصيد دائن مستحق للعميل")}</span></td>
+                                <td>${dateLabel(item.date)}</td>
+                                <td data-payable-actions="${escape(item.id)}"><button type="button" class="primary-button" style="background:#059669;border-color:#059669;padding:6px 14px;font-size:12px;font-weight:700" data-payable-refund="${escape(item.id)}">رد نقدية للعميل</button></td>
+                            </tr>`;
+                        }).join("") || `<tr><td colspan="7"><div class="table-empty"><strong>لا توجد مبالغ مستحقة للعملاء</strong><span>عند تسجيل مرتجع لفاتورة مدفوعة أو وجود رصيد دائن لعميل ستظهر هنا تلقائيًا</span></div></td></tr>`}</tbody>
+                    </table></div>
+                </div>
+            </section>
         `);
+
+        // Back button
         page.querySelector("#backToCustomersButton")?.addEventListener("click", () => {
             document.querySelector('[data-nav="customers"]')?.click();
         });
-        page.addEventListener("click", (event) => {
-            const button = event.target.closest("[data-receivable-pay]");
-            if (!button) return;
-            const invoice = sortedInvoices.find((item) => Number(item.id) === Number(button.dataset.receivablePay));
-            const cell = page.querySelector(`[data-receivable-actions="${Number(button.dataset.receivablePay)}"]`);
-            if (!invoice || !cell) return;
-            cell.innerHTML = `<form class="receivable-inline-payment" data-receivable-payment-form="${Number(invoice.id)}" style="display:flex;gap:6px;align-items:center;min-width:220px"><input type="number" min="0.01" max="${Number(invoice.remaining)}" step="0.01" value="${Number(invoice.remaining)}" required aria-label="مبلغ التحصيل"><button type="submit" class="primary-button">حفظ</button><button type="button" class="secondary-button" data-cancel-receivable>إلغاء</button></form>`;
-            cell.querySelector("input")?.focus();
-            cell.querySelector("input")?.select();
+
+        // Tabs switcher
+        page.querySelectorAll("[data-dues-tab]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const targetTab = button.dataset.duesTab;
+                activeTab = targetTab;
+                page.querySelectorAll("[data-dues-tab]").forEach((tabBtn) => {
+                    tabBtn.className = tabBtn === button ? "primary-button" : "secondary-button";
+                });
+                page.querySelectorAll("[data-dues-panel]").forEach((panel) => {
+                    panel.hidden = panel.dataset.duesPanel !== targetTab;
+                });
+            });
         });
-        page.addEventListener("click", (event) => {
-            const cancel = event.target.closest("[data-cancel-receivable]");
-            if (!cancel) return;
-            const form = cancel.closest("[data-receivable-payment-form]");
-            const invoiceId = Number(form?.dataset.receivablePaymentForm);
-            const cell = page.querySelector(`[data-receivable-actions="${invoiceId}"]`);
-            if (cell) cell.innerHTML = `<button type="button" class="edit-btn" data-receivable-pay="${invoiceId}">تحصيل دفعة</button>`;
-        });
-        page.addEventListener("submit", async (event) => {
-            const form = event.target.closest("[data-receivable-payment-form]");
-            if (!form) return;
+
+        // معالج نقر واحد مفوّض. المهم هنا إنه "خاصية" (onclick) مش addEventListener:
+        // عنصر .dashboard بيتعاد استخدامه مع كل رسم للصفحة، فالـ addEventListener كان بيكدّس
+        // معالجات قديمة (بقوائم بيانات قديمة) وكل ضغطة كانت بتنفّذ أكتر من مرة.
+        let refundInFlight = false;
+        const collectButtonHtml = (id) => `<button type="button" class="edit-btn" data-receivable-pay="${escape(id)}">تحصيل دفعة</button>`;
+        const refundButtonHtml = (id) => `<button type="button" class="primary-button" style="background:#059669;border-color:#059669;padding:6px 14px;font-size:12px;font-weight:700" data-payable-refund="${escape(id)}">رد نقدية للعميل</button>`;
+
+        page.onclick = async (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+
+            // --- تحصيل من العميل: فتح خانة المبلغ ---
+            const collect = target.closest("[data-receivable-pay]");
+            if (collect) {
+                const payId = collect.dataset.receivablePay;
+                const invoice = sortedInvoices.find((item) => String(item.id) === String(payId));
+                const cell = collect.closest("[data-receivable-actions]");
+                if (!invoice || !cell) return;
+                cell.innerHTML = `<form class="receivable-inline-payment" data-receivable-payment-form="${escape(invoice.id)}" style="display:flex;gap:6px;align-items:center;min-width:220px"><input type="number" min="0.01" max="${Number(invoice.remaining)}" step="0.01" value="${Number(invoice.remaining)}" required aria-label="مبلغ التحصيل"><button type="submit" class="primary-button">حفظ</button><button type="button" class="secondary-button" data-cancel-receivable>إلغاء</button></form>`;
+                cell.querySelector("input")?.focus();
+                cell.querySelector("input")?.select();
+                return;
+            }
+
+            // --- تحصيل: إلغاء ---
+            if (target.closest("[data-cancel-receivable]")) {
+                const cell = target.closest("[data-receivable-actions]");
+                if (cell) cell.innerHTML = collectButtonHtml(cell.dataset.receivableActions);
+                return;
+            }
+
+            // --- رد نقدية للعميل: فتح خانة المبلغ ---
+            const openRefund = target.closest("[data-payable-refund]");
+            if (openRefund) {
+                const payId = openRefund.dataset.payableRefund;
+                const item = payablesList.find((p) => String(p.id) === String(payId));
+                const cell = openRefund.closest("[data-payable-actions]");
+                if (!item || !cell) return;
+                cell.innerHTML = `<div class="payable-inline-refund" data-payable-refund-box="${escape(item.id)}" style="display:flex;gap:6px;align-items:center;min-width:220px"><input type="number" min="0.01" max="${Number(item.amount)}" step="0.01" value="${Number(item.amount)}" style="width:100px;padding:6px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#fff" required aria-label="مبلغ الرد"><button type="button" class="primary-button btn-confirm-refund" data-confirm-refund="${escape(item.id)}" style="background:#059669;border-color:#059669;padding:6px 14px;cursor:pointer">صرف</button><button type="button" class="secondary-button" data-cancel-payable style="padding:6px 10px;cursor:pointer">إلغاء</button></div>`;
+                cell.querySelector("input")?.focus();
+                cell.querySelector("input")?.select();
+                return;
+            }
+
+            // --- رد نقدية: إلغاء (كان بيدوّر على data-payable-refund-form وده مش موجود، فالإلغاء ما كانش بيشتغل) ---
+            if (target.closest("[data-cancel-payable]")) {
+                const cell = target.closest("[data-payable-actions]");
+                if (cell) cell.innerHTML = refundButtonHtml(cell.dataset.payableActions);
+                return;
+            }
+
+            // --- رد نقدية: تأكيد الصرف ---
+            const confirmBtn = target.closest("[data-confirm-refund]");
+            if (confirmBtn) {
+                event.preventDefault();
+                if (refundInFlight) return;
+
+                const payId = confirmBtn.dataset.confirmRefund;
+                const item = payablesList.find((p) => String(p.id) === String(payId));
+                const box = confirmBtn.closest("[data-payable-refund-box]");
+                const amount = Math.round(Number(box?.querySelector("input")?.value) * 100) / 100;
+
+                if (!item || !Number.isFinite(amount) || amount <= 0 || amount > Number(item.amount) + 0.000001) {
+                    window.alert("يرجى إدخال مبلغ صحيح لا يتجاوز المستحق للعميل (" + (item ? item.amount : 0) + " ج.م)");
+                    return;
+                }
+                if (!window.confirm(`هل أنت متأكد من صرف مبلغ ${amount} ج.م للعميل ${item.customer_name || ""}؟`)) return;
+
+                refundInFlight = true;
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = "جاري الصرف...";
+                try {
+                    await window.elSharq.refundCustomer(
+                        item.customer_id,
+                        amount,
+                        item.reason || `رد نقدية للعميل ${item.customer_name || ""}`,
+                        item.invoice_number
+                    );
+                    refundInFlight = false;
+                    window.alert("تم تسجيل صرف المبلغ بنجاح وتحديث الخزنة!");
+                    // إعادة جلب كل البيانات من القاعدة (المستحقات + المرتجعات) بدل الاعتماد على نسخة قديمة
+                    await receivables("payables");
+                } catch (err) {
+                    refundInFlight = false;
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = "صرف";
+                    window.alert("حدث خطأ أثناء الصرف: " + (err?.message || err));
+                }
+            }
+        };
+
+        // تحصيل دفعة من العميل (submit). نفس الفكرة: خاصية واحدة بتتبدّل مع كل رسم.
+        page.onsubmit = async (event) => {
+            const recForm = event.target.closest("[data-receivable-payment-form]");
+            if (!recForm) return;
             event.preventDefault();
-            const invoiceId = Number(form.dataset.receivablePaymentForm);
-            const invoice = sortedInvoices.find((item) => Number(item.id) === invoiceId);
-            const amount = Number(form.querySelector("input")?.value);
+            if (recForm.dataset.busy === "1") return;
+            recForm.dataset.busy = "1";
+
+            const invoiceId = recForm.dataset.receivablePaymentForm;
+            const invoice = sortedInvoices.find((item) => String(item.id) === String(invoiceId));
+            const amount = Number(recForm.querySelector("input")?.value);
             if (!invoice || !Number.isFinite(amount) || amount <= 0 || amount > Number(invoice.remaining) + 0.000001) {
+                recForm.dataset.busy = "0";
                 window.alert("أدخل مبلغ تحصيل صحيح لا يتجاوز المتبقي على الفاتورة.");
                 return;
             }
-            const submit = form.querySelector('[type="submit"]');
-            submit.disabled = true;
+            const submit = recForm.querySelector('[type="submit"]');
+            if (submit) submit.disabled = true;
             try {
                 await window.elSharq.recordAccountPayment("customers", invoiceId, amount);
-                await receivables();
+                await receivables("receivables");
             } catch (error) {
-                submit.disabled = false;
+                if (submit) submit.disabled = false;
+                recForm.dataset.busy = "0";
                 window.alert(error?.message || "تعذر تسجيل التحصيل.");
             }
-        });
+        };
     }
 
-    async function quickTransactions() {
+
+async function quickTransactions() {
         const [products, history] = await Promise.all([window.elSharq.getProducts(), window.elSharq.getQuickTransactions()]);
         const activeProducts = products.filter((product) => Number(product.active) === 1);
         const page = content("المعاملات السريعة", "بيع سريع أو مرتجع نقدي مستقل بدون إثبات بيع. الحركة تخص المعرض والخزنة تلقائيًا.", `
@@ -1292,13 +1601,37 @@
     }
 
     async function cashier() {
-        const [accounts, entries, categories] = await Promise.all([
+        const today = localDate();
+        const days = Array.from({ length: 7 }, (_, index) => {
+            const date = new Date();
+            date.setHours(12, 0, 0, 0);
+            date.setDate(date.getDate() - (6 - index));
+            return localDateForChart(date);
+        });
+        const [accounts, entries, categories, todaySummary, week] = await Promise.all([
             window.elSharq.getCashSummary(),
             window.elSharq.getCashTransactions(),
-            window.elSharq.getExpenseCategories()
+            window.elSharq.getExpenseCategories(),
+            window.elSharq.getReportSummary({ from: today, to: today }),
+            Promise.all(days.map((day) => window.elSharq.getReportSummary({ from: day, to: day })))
         ]);
-        const page = content("الخزنة", "متابعة الرصيد وتسجيل المقبوضات والمصروفات.", `
-            <div class="stats-grid">${accounts.map((a) => `<div class="stat-card"><div class="stat-icon cash">خ</div><div><span>${escape(a.name)}</span><strong>${money(a.balance)} ج.م</strong></div></div>`).join("")}</div>
+        const totalProfit = Number(todaySummary.sales.profit || 0);
+        const totalExpenses = Number(todaySummary.expenses || 0);
+        const maxSales = Math.max(1, ...week.map((item) => Number(item.sales.total || 0)));
+        const chart = week.map((item, index) => {
+            const value = Number(item.sales.total || 0);
+            const height = Math.max(5, Math.round(value / maxSales * 100));
+            return `<div title="${escape(days[index])}: ${money(value)} ج.م" style="flex:1;min-width:24px;text-align:center"><div style="height:120px;display:flex;align-items:flex-end;justify-content:center"><span style="display:block;width:70%;height:${height}%;min-height:5px;background:#4b9bea;border-radius:6px 6px 0 0"></span></div><small>${escape(days[index].slice(5))}</small></div>`;
+        }).join("");
+        const page = content("الخزنة", "الأرصدة والملخص المالي اليومي وحركة آخر سبعة أيام.", `
+            <div class="stats-grid">${accounts.map((a) => `<div class="stat-card"><div class="stat-icon cash">خ</div><div><span>رصيد ${escape(a.name)}</span><strong>${money(a.balance)} ج.م</strong></div></div>`).join("")}
+                <div class="stat-card"><div class="stat-icon sales">م</div><div><span>مبيعات اليوم</span><strong>${money(todaySummary.sales.total)} ج.م</strong><small>${Number(todaySummary.sales.count || 0)} فاتورة</small></div></div>
+                <div class="stat-card"><div class="stat-icon invoices">ف</div><div><span>عدد فواتير اليوم</span><strong>${Number(todaySummary.sales.count || 0)}</strong></div></div>
+                <div class="stat-card"><div class="stat-icon profit">ر</div><div><span>مجمل الربح اليوم</span><strong>${money(totalProfit)} ج.م</strong></div></div>
+                <div class="stat-card"><div class="stat-icon cash">ص</div><div><span>مصروفات اليوم</span><strong>${money(totalExpenses)} ج.م</strong></div></div>
+                <div class="stat-card"><div class="stat-icon profit">ن</div><div><span>صافي الربح اليوم</span><strong>${money(totalProfit - totalExpenses)} ج.م</strong></div></div>
+            </div>
+            <div class="sales-panel" style="margin-top:16px"><div class="sales-panel-header"><div><h3>المبيعات خلال آخر 7 أيام</h3><span>إجمالي المبيعات اليومية</span></div></div><div style="display:flex;gap:12px;align-items:flex-end;padding:16px 8px 8px">${chart}</div></div>
             <div class="sales-panel"><div class="sales-panel-header"><div><h3>تسجيل حركة نقدية</h3></div></div>
                 <form id="cashForm" class="sale-info-grid">
                     <div class="form-field"><label>نوع الحركة</label><select id="cashDirection"><option value="in">إيراد / مقبوضات</option><option value="out">مصروف / مدفوعات</option></select></div>
@@ -1357,7 +1690,7 @@
 
     async function expenses() {
         const [accounts, entries, categories] = await Promise.all([
-            window.elSharq.getCashSummary(),
+            window.elSharq.getCashAccounts(),
             window.elSharq.getExpenses(),
             window.elSharq.getExpenseCategories()
         ]);
@@ -1381,15 +1714,6 @@
                         </div>
                     </div>
 
-                    ${accounts.map((account) => `
-                        <div class="stat-card">
-                            <div class="stat-icon cash">خ</div>
-                            <div>
-                                <span>رصيد ${escape(account.name)}</span>
-                                <strong>${money(account.balance)} ج.م</strong>
-                            </div>
-                        </div>
-                    `).join("")}
                 </div>
 
                 <div class="sales-panel">
@@ -1518,7 +1842,9 @@
                 button.disabled = true;
 
                 try {
-                    await window.elSharq.deleteExpense(expenseId);
+                    const password = await window.requestDeletionPassword?.();
+                    if (!password) return;
+                    await window.elSharq.deleteExpense(expenseId, password);
                     await expenses();
                 } catch (error) {
                     fail("expenseMessage", error);
@@ -1536,8 +1862,7 @@
             button.disabled = true;
 
             try {
-                await window.elSharq.addCashTransaction({
-                    direction: "out",
+                await window.elSharq.addExpense({
                     account_id: page.querySelector("#expenseAccount").value,
                     amount: page.querySelector("#expenseAmount").value,
                     expense_category_id:
@@ -1546,7 +1871,7 @@
                         page.querySelector("#expenseDescription").value.trim()
                 });
 
-                // إعادة تحميل الدفتر والأرصدة بعد نجاح التسجيل.
+                // إعادة تحميل دفتر المصروفات بعد نجاح التسجيل.
                 await expenses();
             } catch (error) {
                 fail("expenseMessage", error);
@@ -1586,13 +1911,13 @@
         `);
         const draw = (data) => {
             page.querySelector("#reportCards").innerHTML = `
-                <div class="stat-card"><div class="stat-icon sales">م</div><div><span>إجمالي المبيعات</span><strong>${money(data.sales.total)} ج.م</strong><small>محصل ${money(data.sales.paid)} / آجل ${money(data.sales.remaining)}</small></div></div>
-                <div class="stat-card"><div class="stat-icon cash">ش</div><div><span>المشتريات (${data.purchases.count} فاتورة)</span><strong>${money(data.purchases.total)} ج.م</strong><small>محصل ${money(data.purchases.paid)} / آجل ${money(data.purchases.remaining)}</small></div></div>
+                <div class="stat-card"><div class="stat-icon sales">م</div><div><span>إجمالي المبيعات</span><strong>${money(data.sales.total)} ج.م</strong><small>مقبوضات المبيعات خلال الفترة ${money(data.sales.paid)} / متبقي حالي على فواتير الفترة ${money(data.sales.remaining)}</small></div></div>
+                <div class="stat-card"><div class="stat-icon cash">ش</div><div><span>المشتريات (${data.purchases.count} فاتورة)</span><strong>${money(data.purchases.total)} ج.م</strong><small>مدفوعات المشتريات خلال الفترة ${money(data.purchases.paid)} / متبقي حالي على فواتير الفترة ${money(data.purchases.remaining)}</small></div></div>
                 <div class="stat-card"><div class="stat-icon profit">ر</div><div><span>مجمل الربح التقديري</span><strong>${money(data.sales.profit)} ج.م</strong></div></div>
                 <div class="stat-card"><div class="stat-icon profit">ص</div><div><span>صافي الربح بعد المصروفات</span><strong>${money(Number(data.sales.profit || 0) - Number(data.expenses || 0))} ج.م</strong><small>مجمل الربح ناقص المصروفات</small></div></div>
                 <div class="stat-card"><div class="stat-icon cash">ص</div><div><span>المصروفات</span><strong>${money(data.expenses)} ج.م</strong></div></div>
-                <div class="stat-card"><div class="stat-icon stock">م</div><div><span>قيمة المخزون بالجملة</span><strong>${money(data.stockValue)} ج.م</strong></div></div>
-                <div class="stat-card"><div class="stat-icon stock">ق</div><div><span>قيمة المخزون بالقطاعي</span><strong>${money(data.stockRetailValue)} ج.م</strong></div></div>
+                <div class="stat-card"><div class="stat-icon stock">م</div><div><span>قيمة المخزون الحالية بالجملة</span><strong>${money(data.stockValue)} ج.م</strong></div></div>
+                <div class="stat-card"><div class="stat-icon stock">ق</div><div><span>قيمة المخزون الحالية بالقطاعي</span><strong>${money(data.stockRetailValue)} ج.م</strong></div></div>
             `;
         };
         draw(summary);
@@ -1825,10 +2150,11 @@
         }
         const page = content("الإعدادات", "بيانات المنشأة التي تظهر داخل النظام.", `
             <div class="sales-panel"><form id="settingsForm" class="sale-info-grid">
-                <div class="form-field"><label>اسم المنشأة</label><input id="storeName" maxlength="160" value="${escape(values.store_name || "الشرق")}"></div>
+                <div class="form-field"><label>اسم المحل الظاهر في الفاتورة</label><input id="storeName" maxlength="160" value="${escape(values.store_name || "الشرق")}"></div>
                 <div class="form-field"><label>الهاتف</label><input id="storePhone" type="tel" value="${escape(values.store_phone || "")}"></div>
-                <div class="form-field"><label>العنوان</label><input id="storeAddress" value="${escape(values.store_address || "")}"></div>
-                <div class="form-field"><label>العملة</label><input value="جنيه مصري" disabled></div>
+                                <div class="form-field"><label>العنوان</label><input id="storeAddress" value="${escape(values.store_address || "")}"></div>
+                                <div class="form-field"><label for="storeOwnerName">اسم صاحب المحل</label><input id="storeOwnerName" maxlength="160" value="${escape(values.store_owner_name || "ناشد دميان")}"></div>
+                                <div class="form-field"><label>العملة</label><input value="جنيه مصري" disabled></div>
                 <div id="settingsMessage" class="product-form-message"></div><button class="primary-button" type="submit">حفظ الإعدادات</button>
             </form>
             <div class="sale-info-grid">
@@ -1836,13 +2162,23 @@
                 <div id="backupMessage" class="product-form-message"></div>
             </div></div>
             <div class="sales-panel">
-                <div class="sales-panel-header"><div><h3>كلمة مرور الحذف</h3><span>${values.deletion_password_configured ? "تم إعداد كلمة مرور. أدخل الحالية لتغييرها." : "أنشئ كلمة مرور مستقلة مطلوبة قبل حذف الفواتير أو الأصناف."}</span></div></div>
-                <form id="deletionPasswordForm" class="sale-info-grid">
-                    ${values.deletion_password_configured ? '<div class="form-field"><label for="currentDeletionPassword">كلمة المرور الحالية</label><input id="currentDeletionPassword" type="password" autocomplete="current-password" required></div>' : ""}
-                    <div class="form-field"><label for="newDeletionPassword">كلمة المرور الجديدة (8 أحرف على الأقل)</label><input id="newDeletionPassword" type="password" minlength="8" autocomplete="new-password" required></div>
-                    <div class="form-field"><label for="confirmDeletionPassword">تأكيد كلمة المرور</label><input id="confirmDeletionPassword" type="password" minlength="8" autocomplete="new-password" required></div>
-                    <div id="deletionPasswordMessage" class="product-form-message"></div>
-                    <button class="primary-button" type="submit">${values.deletion_password_configured ? "تغيير كلمة مرور الحذف" : "تعيين كلمة مرور الحذف"}</button>
+                <div class="sales-panel-header"><div><h3>نقل المنتجات والأسعار</h3><span>صدّر ملفًا إلى الفلاشة ثم استورده في نسخة العميل.</span></div></div>
+                <div class="sale-info-grid">
+                    <button class="secondary-button" id="exportProductCatalogButton" type="button">تصدير المنتجات والأسعار</button>
+                    <button class="secondary-button" id="importProductCatalogButton" type="button">استيراد ملف المنتجات</button>
+                    <div id="productTransferMessage" class="product-form-message"></div>
+                </div>
+            </div>
+            <div class="sales-panel">
+                <div class="sales-panel-header"><div><h3>كلمة المرور الموحدة</h3><span>${values.finance_password_configured || values.deletion_password_configured ? "أدخل كلمات المرور الحالية المضبوطة لتوحيدها أو تغييرها." : "أنشئ كلمة واحدة للخزنة والتقارير وحذف الأصناف والفواتير."}</span></div></div>
+                <form id="sharedSecurityPasswordForm" class="sale-info-grid">
+                    ${(values.finance_password_configured || values.deletion_password_configured) && values.security_passwords_unified ? '<div class="form-field"><label for="currentSharedPassword">كلمة المرور الحالية</label><input id="currentSharedPassword" type="password" autocomplete="current-password" required></div>' : ""}
+                    ${!values.security_passwords_unified && values.finance_password_configured ? '<div class="form-field"><label for="currentFinancePassword">كلمة مرور الخزنة/التقارير الحالية</label><input id="currentFinancePassword" type="password" autocomplete="current-password" required></div>' : ""}
+                    ${!values.security_passwords_unified && values.deletion_password_configured ? '<div class="form-field"><label for="currentDeletionPassword">كلمة مرور الحذف الحالية</label><input id="currentDeletionPassword" type="password" autocomplete="current-password" required></div>' : ""}
+                    <div class="form-field"><label for="newSharedPassword">كلمة المرور الجديدة (4 أحرف أو أرقام على الأقل)</label><input id="newSharedPassword" type="password" minlength="4" autocomplete="new-password" required></div>
+                    <div class="form-field"><label for="confirmSharedPassword">تأكيد كلمة المرور الجديدة</label><input id="confirmSharedPassword" type="password" minlength="4" autocomplete="new-password" required></div>
+                    <div id="sharedSecurityPasswordMessage" class="product-form-message"></div>
+                    <button class="primary-button" type="submit">${values.finance_password_configured || values.deletion_password_configured ? "حفظ كلمة المرور الموحدة" : "تعيين كلمة المرور الموحدة"}</button>
                 </form>
             </div>
         `);
@@ -1852,8 +2188,9 @@
                 await window.elSharq.saveSettings({
                     store_name: page.querySelector("#storeName").value,
                     store_phone: page.querySelector("#storePhone").value,
-                    store_address: page.querySelector("#storeAddress").value
-                });
+                                        store_address: page.querySelector("#storeAddress").value,
+                                        store_owner_name: page.querySelector("#storeOwnerName").value
+                                    });
                 const updatedName = page.querySelector("#storeName").value.trim();
                 if (updatedName) {
                     const brandName = document.querySelector(".brand-text h1");
@@ -1877,23 +2214,50 @@
                 button.disabled = false;
             }
         });
-        page.querySelector("#deletionPasswordForm").addEventListener("submit", async (event) => {
+        page.querySelector("#exportProductCatalogButton").addEventListener("click", async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                const result = await window.elSharq.exportProductCatalog();
+                if (result.canceled) return;
+                status("productTransferMessage", `تم تصدير ${result.count} منتجًا. انسخ ملف JSON إلى الفلاشة.`);
+            } catch (error) {
+                fail("productTransferMessage", error);
+            } finally {
+                button.disabled = false;
+            }
+        });
+        page.querySelector("#importProductCatalogButton").addEventListener("click", async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                const result = await window.elSharq.importProductCatalog();
+                if (result.canceled) return;
+                status("productTransferMessage", `اكتمل الاستيراد: إضافة ${result.added} صنف جديد بمخزون صفر، وتجاهل ${result.skipped} صنفًا موجودًا بنفس الكود دون تغيير بياناته.`);
+            } catch (error) {
+                fail("productTransferMessage", error);
+            } finally {
+                button.disabled = false;
+            }
+        });
+        page.querySelector("#sharedSecurityPasswordForm").addEventListener("submit", async (event) => {
             event.preventDefault();
-            const newPassword = page.querySelector("#newDeletionPassword").value;
-            if (newPassword !== page.querySelector("#confirmDeletionPassword").value) {
-                return status("deletionPasswordMessage", "كلمتا المرور غير متطابقتين", true);
+            const newPassword = page.querySelector("#newSharedPassword").value;
+            if (newPassword !== page.querySelector("#confirmSharedPassword").value) {
+                return status("sharedSecurityPasswordMessage", "كلمتا المرور غير متطابقتين", true);
             }
             const button = event.currentTarget.querySelector('[type="submit"]');
             button.disabled = true;
             try {
-                await window.elSharq.setDeletionPassword(
-                    page.querySelector("#currentDeletionPassword")?.value || "",
+                await window.elSharq.setSharedSecurityPassword(
+                    page.querySelector("#currentSharedPassword")?.value || page.querySelector("#currentFinancePassword")?.value || "",
+                    page.querySelector("#currentSharedPassword")?.value || page.querySelector("#currentDeletionPassword")?.value || "",
                     newPassword
                 );
-                status("deletionPasswordMessage", "تم حفظ كلمة مرور الحذف");
+                status("sharedSecurityPasswordMessage", "تم حفظ كلمة المرور الموحدة للخزنة والتقارير والحذف");
                 await settings();
             } catch (error) {
-                fail("deletionPasswordMessage", error);
+                fail("sharedSecurityPasswordMessage", error);
             } finally {
                 button.disabled = false;
             }
@@ -1937,12 +2301,17 @@
 
         const rowsHtml = (reservationRows || []).map((row) => {
             const actions = row.status === "pending" ? `
+                <button type="button" class="secondary-button" data-res-action="view" data-id="${Number(row.id)}">عرض الحجز</button>
+                <button type="button" class="secondary-button" data-res-action="edit" data-id="${Number(row.id)}">تعديل</button>
                 <button type="button" class="primary-button" data-res-action="payment" data-id="${Number(row.id)}">تحصيل دفعة</button>
                 <button type="button" class="secondary-button" data-res-action="deliver" data-id="${Number(row.id)}">تسليم وتحويل لفاتورة</button>
                 <button type="button" class="secondary-button" data-res-action="cancel" data-id="${Number(row.id)}">إلغاء ورد المدفوع</button>
             ` : (row.status === "completed" ? `
-                <span class="reservation-invoice-label">الفاتورة: ${escape(row.invoice_number || "-")}</span>
-            ` : `<span class="reservation-cancelled-label">تم إلغاء الحجز</span>`);
+                <button type="button" class="secondary-button" data-res-action="view" data-id="${Number(row.id)}">عرض الفاتورة ${escape(row.invoice_number || "")}</button>
+            ` : `
+                <button type="button" class="secondary-button" data-res-action="view" data-id="${Number(row.id)}">عرض الحجز الملغي</button>
+                <span class="reservation-cancelled-label">تم إلغاء الحجز</span>
+            `);
             return `
                 <tr>
                     <td><strong class="reservation-number">${escape(row.reservation_number || "")}</strong><small class="reservation-date">${escape(dateText(row.created_at))}</small></td>
@@ -2197,6 +2566,220 @@
                 button.disabled = false;
             }
         });
+        const requestReservationDeliveryAmount = (row) => new Promise((resolve) => {
+            const overlay = document.createElement("div");
+            overlay.setAttribute("data-reservation-delivery-dialog", "true");
+            overlay.style.cssText = "position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:18px;background:rgba(3,10,16,.78);";
+            overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="reservationDeliveryTitle" style="width:min(460px,100%);padding:22px;border:1px solid #3a5264;border-radius:16px;background:#17232d;color:#e8f0f6;box-shadow:0 22px 70px rgba(0,0,0,.5);direction:rtl;">
+                <h3 id="reservationDeliveryTitle" style="margin:0 0 8px;font-size:17px;">تسليم الحجز وتحويله لفاتورة</h3>
+                <p style="margin:0 0 14px;color:#b6c5d0;line-height:1.8;font-size:13px;">الحجز ${escape(row.reservation_number)} — المتبقي ${money(row.remaining_amount)} ج.م</p>
+                <p style="margin:0 0 14px;color:#9eb0bd;line-height:1.8;font-size:12px;">اكتب المبلغ الذي ستقبضه الآن. اكتب 0 إذا كان الباقي آجلًا. عند التأكيد ستُنشأ الفاتورة وتُخصم الكمية من المخزون، مع ربط العربون والمدفوعات السابقة دون تسجيلها مرة أخرى في الخزنة.</p>
+                <form data-reservation-delivery-form>
+                    <label for="reservationDeliveryAmount" style="display:block;margin-bottom:7px;font-size:12px;color:#c3d0da;">مبلغ التحصيل الآن (ج.م)</label>
+                    <input id="reservationDeliveryAmount" type="number" min="0" max="${Number(row.remaining_amount || 0)}" step="0.01" value="${Number(row.remaining_amount || 0)}" required style="box-sizing:border-box;width:100%;min-height:44px;padding:10px 12px;border:1px solid #405462;border-radius:9px;background:#101a24;color:#eef4f8;font-size:16px;">
+                    <div data-delivery-error role="alert" style="min-height:0;margin-top:8px;color:#ff9b9b;font-size:12px;"></div>
+                    <div style="display:flex;gap:9px;margin-top:16px;">
+                        <button type="submit" class="primary-button" style="flex:1;">تأكيد التسليم وإنشاء الفاتورة</button>
+                        <button type="button" data-cancel-delivery class="secondary-button">إلغاء</button>
+                    </div>
+                </form>
+            </section>`;
+            const close = (amount) => {
+                document.removeEventListener("keydown", onKeyDown, true);
+                overlay.remove();
+                resolve(amount);
+            };
+            const onKeyDown = (event) => { if (event.key === "Escape") close(null); };
+            overlay.addEventListener("click", (event) => { if (event.target === overlay) close(null); });
+            overlay.querySelector("[data-cancel-delivery]").addEventListener("click", () => close(null));
+            overlay.querySelector("[data-reservation-delivery-form]").addEventListener("submit", (event) => {
+                event.preventDefault();
+                const input = overlay.querySelector("#reservationDeliveryAmount");
+                const error = overlay.querySelector("[data-delivery-error]");
+                const raw = input.value.trim();
+                const amount = Number(raw);
+                if (!raw || !Number.isFinite(amount) || amount < 0) {
+                    error.textContent = "أدخل مبلغًا صحيحًا، أو اكتب 0 إذا كان الباقي آجلًا.";
+                    input.focus();
+                    return;
+                }
+                if (amount > Number(row.remaining_amount || 0) + 0.000001) {
+                    error.textContent = "مبلغ التحصيل أكبر من المتبقي على الحجز.";
+                    input.focus();
+                    return;
+                }
+                close(amount);
+            });
+            document.addEventListener("keydown", onKeyDown, true);
+            document.body.appendChild(overlay);
+            overlay.querySelector("#reservationDeliveryAmount").focus();
+            overlay.querySelector("#reservationDeliveryAmount").select();
+        });
+
+        const requestReservationPaymentAmount = (row) => new Promise((resolve) => {
+            const overlay = document.createElement("div");
+            overlay.setAttribute("data-reservation-payment-dialog", "true");
+            overlay.style.cssText = "position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:18px;background:rgba(3,10,16,.78);";
+            overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="reservationPaymentTitle" style="width:min(430px,100%);padding:22px;border:1px solid #3a5264;border-radius:16px;background:#17232d;color:#e8f0f6;box-shadow:0 22px 70px rgba(0,0,0,.5);direction:rtl;">
+                <h3 id="reservationPaymentTitle" style="margin:0 0 8px;font-size:17px;">تحصيل دفعة من الحجز</h3>
+                <p style="margin:0 0 14px;color:#b6c5d0;line-height:1.8;font-size:13px;">${escape(row.reservation_number)} — المتبقي ${money(row.remaining_amount)} ج.م</p>
+                <form data-reservation-payment-form><label for="reservationPaymentAmount" style="display:block;margin-bottom:7px;font-size:12px;color:#c3d0da;">مبلغ التحصيل (ج.م)</label>
+                    <input id="reservationPaymentAmount" type="number" min="0.01" max="${Number(row.remaining_amount || 0)}" step="0.01" value="${Number(row.remaining_amount || 0)}" required style="box-sizing:border-box;width:100%;min-height:44px;padding:10px 12px;border:1px solid #405462;border-radius:9px;background:#101a24;color:#eef4f8;font-size:16px;">
+                    <div data-payment-error role="alert" style="min-height:0;margin-top:8px;color:#ff9b9b;font-size:12px;"></div>
+                    <div style="display:flex;gap:9px;margin-top:16px;"><button type="submit" class="primary-button" style="flex:1;">تسجيل التحصيل</button><button type="button" data-cancel-payment class="secondary-button">إلغاء</button></div>
+                </form></section>`;
+            const finish = (value) => { document.removeEventListener("keydown", onKeyDown, true); overlay.remove(); resolve(value); };
+            const onKeyDown = (event) => { if (event.key === "Escape") finish(null); };
+            overlay.addEventListener("click", (event) => { if (event.target === overlay) finish(null); });
+            overlay.querySelector("[data-cancel-payment]").addEventListener("click", () => finish(null));
+            overlay.querySelector("[data-reservation-payment-form]").addEventListener("submit", (event) => {
+                event.preventDefault();
+                const input = overlay.querySelector("#reservationPaymentAmount");
+                const amount = Number(input.value);
+                const error = overlay.querySelector("[data-payment-error]");
+                if (!Number.isFinite(amount) || amount <= 0) { error.textContent = "أدخل مبلغًا أكبر من صفر."; input.focus(); return; }
+                if (amount > Number(row.remaining_amount || 0) + 0.000001) { error.textContent = "الدفعة أكبر من المتبقي على الحجز."; input.focus(); return; }
+                finish(amount);
+            });
+            document.addEventListener("keydown", onKeyDown, true);
+            document.body.appendChild(overlay);
+            overlay.querySelector("#reservationPaymentAmount").focus();
+            overlay.querySelector("#reservationPaymentAmount").select();
+        });
+
+        const requestReservationEdit = (reservation) => new Promise((resolve) => {
+            const overlay = document.createElement("div");
+            overlay.setAttribute("data-reservation-edit-dialog", "true");
+            overlay.style.cssText = "position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:18px;background:rgba(3,10,16,.78);";
+            const productOptions = (item) => {
+                const selectedId = Number(item?.product_id || 0);
+                const options = products.map((product) => `<option value="${product.id}" ${Number(product.id) === selectedId ? "selected" : ""}>${escape(product.name)}${product.code ? ` — ${escape(product.code)}` : ""}</option>`);
+                if (item && selectedId && !products.some((product) => Number(product.id) === selectedId)) {
+                    options.unshift(`<option value="${selectedId}" selected>${escape(item.product_name || "صنف غير نشط")}${item.product_code ? ` — ${escape(item.product_code)}` : ""}</option>`);
+                }
+                return `<option value="">اختر الصنف</option>${options.join("")}`;
+            };
+            overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="reservationEditTitle" style="width:min(900px,100%);max-height:92vh;overflow:auto;padding:22px;border:1px solid #3a5264;border-radius:16px;background:#17232d;color:#e8f0f6;box-shadow:0 22px 70px rgba(0,0,0,.5);direction:rtl;">
+                <h3 id="reservationEditTitle" style="margin:0 0 7px;font-size:18px;">تعديل الحجز ${escape(reservation.reservation_number)}</h3>
+                <p style="margin:0 0 14px;color:#9eb0bd;line-height:1.8;font-size:12px;">أسعار الأصناف الموجودة تظل كما كانت عند تسجيلها. أي صنف تضيفه أو تستبدله يأخذ سعر البيع الحالي. إذا أصبح الإجمالي أقل من المدفوع، يسجل النظام رد الفرق نقدًا من الخزنة.</p>
+                <form data-reservation-edit-form>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;">
+                        <label style="font-size:12px;color:#c3d0da;">اسم العميل<input data-edit-customer required maxlength="160" value="${escape(reservation.customer_name || "")}" style="display:block;box-sizing:border-box;width:100%;min-height:40px;margin-top:6px;padding:9px;border:1px solid #405462;border-radius:8px;background:#101a24;color:#eef4f8;"></label>
+                        <label style="font-size:12px;color:#c3d0da;">رقم الهاتف<input data-edit-phone maxlength="40" value="${escape(reservation.customer_phone || "")}" style="display:block;box-sizing:border-box;width:100%;min-height:40px;margin-top:6px;padding:9px;border:1px solid #405462;border-radius:8px;background:#101a24;color:#eef4f8;"></label>
+                        <label style="font-size:12px;color:#c3d0da;">موعد الاستلام<input data-edit-due type="date" value="${escape(reservation.due_date || "")}" style="display:block;box-sizing:border-box;width:100%;min-height:40px;margin-top:6px;padding:9px;border:1px solid #405462;border-radius:8px;background:#101a24;color:#eef4f8;"></label>
+                    </div>
+                    <div data-edit-items style="display:grid;gap:8px;"></div>
+                    <button type="button" data-add-edit-item class="secondary-button" style="margin-top:10px;">＋ إضافة صنف</button>
+                    <label style="display:block;margin-top:14px;font-size:12px;color:#c3d0da;">ملاحظات<textarea data-edit-notes rows="2" style="display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:9px;border:1px solid #405462;border-radius:8px;background:#101a24;color:#eef4f8;">${escape(reservation.notes || "")}</textarea></label>
+                    <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px;padding:12px;border:1px solid rgba(84,227,189,.2);border-radius:10px;color:#bcefe2;"><span>الإجمالي الجديد</span><strong data-edit-total></strong></div>
+                    <div data-edit-error role="alert" style="margin-top:8px;color:#ff9b9b;font-size:12px;"></div>
+                    <div style="display:flex;gap:9px;margin-top:14px;"><button type="submit" data-save-edit class="primary-button" style="flex:1;">حفظ التعديل</button><button type="button" data-cancel-edit class="secondary-button">إلغاء</button></div>
+                </form></section>`;
+            const itemsHost = overlay.querySelector("[data-edit-items]");
+            const finish = (value) => { document.removeEventListener("keydown", onKeyDown, true); overlay.remove(); resolve(value); };
+            const onKeyDown = (event) => { if (event.key === "Escape") finish(null); };
+            const recalculate = () => {
+                const total = Array.from(itemsHost.querySelectorAll("[data-edit-line]")).reduce((sum, line) => sum + Number(line.querySelector("[data-edit-qty]").value || 0) * Number(line.querySelector("[data-edit-price]").value || 0), 0);
+                overlay.querySelector("[data-edit-total]").textContent = `${money(total)} ج.م`;
+            };
+            const addLine = (item = null) => {
+                const line = document.createElement("div");
+                line.setAttribute("data-edit-line", "true");
+                if (item) line.dataset.existingItemId = String(item.id);
+                line.style.cssText = "display:grid;grid-template-columns:minmax(220px,1fr) 110px 140px 38px;gap:8px;align-items:end;padding:9px;border:1px solid #334656;border-radius:10px;background:#111c26;";
+                line.innerHTML = `<label style="font-size:11px;color:#aebfcd;">الصنف<select data-edit-product required style="display:block;box-sizing:border-box;width:100%;min-height:39px;margin-top:5px;padding:7px;border:1px solid #405462;border-radius:8px;background:#101a24;color:#eef4f8;">${productOptions(item)}</select></label>
+                    <label style="font-size:11px;color:#aebfcd;">الكمية<input data-edit-qty type="number" min="0.01" step="0.01" required value="${item ? Number(item.quantity) : 1}" style="display:block;box-sizing:border-box;width:100%;min-height:39px;margin-top:5px;padding:7px;border:1px solid #405462;border-radius:8px;background:#101a24;color:#eef4f8;"></label>
+                    <label style="font-size:11px;color:#aebfcd;">سعر الوحدة<input data-edit-price type="number" min="0" step="0.01" readonly value="${item ? Number(item.unit_price) : ""}" placeholder="يُحدد تلقائيًا" style="display:block;box-sizing:border-box;width:100%;min-height:39px;margin-top:5px;padding:7px;border:1px solid #405462;border-radius:8px;background:#14252c;color:#bcefe2;"></label>
+                    <button type="button" data-remove-edit-line aria-label="حذف الصنف" title="حذف الصنف" class="secondary-button" style="min-width:38px;height:39px;color:#ff9b9b;">×</button>`;
+                itemsHost.appendChild(line);
+                line.querySelector("[data-edit-product]").addEventListener("change", (event) => {
+                    const selected = products.find((product) => Number(product.id) === Number(event.target.value));
+                    delete line.dataset.existingItemId;
+                    line.querySelector("[data-edit-price]").value = selected ? String(Number(selected.sale_price || 0)) : "";
+                    recalculate();
+                });
+                line.querySelector("[data-edit-qty]").addEventListener("input", recalculate);
+                line.querySelector("[data-remove-edit-line]").addEventListener("click", () => { line.remove(); recalculate(); });
+            };
+            (reservation.items || []).forEach((item) => addLine(item));
+            if (!(reservation.items || []).length) addLine();
+            overlay.querySelector("[data-add-edit-item]").addEventListener("click", () => addLine());
+            overlay.querySelector("[data-cancel-edit]").addEventListener("click", () => finish(null));
+            overlay.addEventListener("click", (event) => { if (event.target === overlay) finish(null); });
+            overlay.querySelector("[data-reservation-edit-form]").addEventListener("submit", (event) => {
+                event.preventDefault();
+                const lines = Array.from(itemsHost.querySelectorAll("[data-edit-line]"));
+                const items = lines.map((line) => ({
+                    existing_item_id: line.dataset.existingItemId ? Number(line.dataset.existingItemId) : null,
+                    product_id: Number(line.querySelector("[data-edit-product]").value),
+                    quantity: Number(line.querySelector("[data-edit-qty]").value)
+                }));
+                if (!items.length || items.some((item) => !item.product_id || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+                    overlay.querySelector("[data-edit-error]").textContent = "راجع الصنف والكمية في كل سطر.";
+                    return;
+                }
+                const save = overlay.querySelector("[data-save-edit]");
+                save.disabled = true;
+                resolve({
+                    customer_name: overlay.querySelector("[data-edit-customer]").value.trim(),
+                    customer_phone: overlay.querySelector("[data-edit-phone]").value.trim(),
+                    due_date: overlay.querySelector("[data-edit-due]").value,
+                    notes: overlay.querySelector("[data-edit-notes]").value.trim(),
+                    items
+                });
+                document.removeEventListener("keydown", onKeyDown, true);
+                overlay.remove();
+            });
+            document.addEventListener("keydown", onKeyDown, true);
+            document.body.appendChild(overlay);
+            recalculate();
+        });
+
+        const showReservationDocument = async (reservationRow) => {
+            let printWindow;
+            try {
+                printWindow = window.elSharqInvoicePrint.open();
+                const reservation = await window.elSharq.getReservationById(reservationRow.id);
+                if (!reservation) throw new Error("الحجز غير موجود");
+                const settings = await window.elSharq.getSettings().catch(() => ({}));
+                if (reservation.status === "completed" && reservation.sale_id) {
+                    const sale = await window.elSharq.getSaleById(reservation.sale_id);
+                    if (!sale) throw new Error("فاتورة التسليم غير موجودة");
+                    window.elSharqInvoicePrint.print(printWindow, {
+                        ...sale, store_name: settings.store_name, store_phone: settings.store_phone,
+                        store_address: settings.store_address, store_owner_name: settings.store_owner_name,
+                        type: sale.sale_type === "plumbing_order" ? "plumbing_order" : "sale",
+                        partyName: sale.customer_name || reservation.customer_name,
+                        items: (sale.items || []).map((item) => ({
+                            ...item, displayQuantity: Number(item.display_quantity ?? item.quantity ?? 0),
+                            displayUnit: item.display_unit || item.product_unit || item.unit || "قطعة",
+                            unitPrice: Number(item.display_unit_price ?? item.unit_price ?? 0),
+                            total: Number(item.total ?? item.total_amount ?? 0)
+                        }))
+                    }, { autoPrint: false });
+                } else {
+                    window.elSharqInvoicePrint.print(printWindow, {
+                        type: "reservation", invoice_number: reservation.reservation_number,
+                        created_at: reservation.created_at, store_name: settings.store_name,
+                        store_phone: settings.store_phone, store_address: settings.store_address,
+                        store_owner_name: settings.store_owner_name,
+                        partyName: reservation.customer_name, customer_phone: reservation.customer_phone,
+                        subtotal: reservation.subtotal, total: reservation.total_amount,
+                        paid: reservation.paid_amount, remaining: reservation.remaining_amount,
+                        notes: [reservation.notes, reservation.status === "cancelled" ? "حجز ملغي" : "حجز قيد الانتظار"].filter(Boolean).join(" | "),
+                        items: (reservation.items || []).map((item) => ({
+                            product_name: item.product_name, displayQuantity: Number(item.quantity),
+                            displayUnit: item.product_unit || "قطعة", unitPrice: Number(item.unit_price),
+                            total: Number(item.total_amount)
+                        }))
+                    }, { autoPrint: false });
+                }
+            } catch (error) {
+                if (printWindow && !printWindow.closed) printWindow.close();
+                throw error;
+            }
+        };
+
         // reservation-actions-direct-binding-v1
         // Bind each rendered button directly so actions do not depend on table event delegation.
         const reservationActionButtons = page.querySelectorAll("[data-res-action][data-id]");
@@ -2213,9 +2796,37 @@
                     window.alert("تعذر تحديد الحجز. حدّث صفحة الحجوزات وحاول مرة أخرى.");
                     return;
                 }
+                if (action === "view") {
+                    try { await showReservationDocument(row); }
+                    catch (error) { window.alert(error?.message || "تعذر عرض الحجز أو الفاتورة."); }
+                    return;
+                }
                 if (row.status !== "pending") {
                     window.alert("هذا الحجز لم يعد قيد الانتظار. سيتم تحديث القائمة.");
                     await reservations();
+                    return;
+                }
+                if (action === "edit") {
+                    actionButton.disabled = true;
+                    const editButtonText = actionButton.textContent;
+                    actionButton.textContent = "جارٍ حفظ التعديل...";
+                    try {
+                        const detail = await window.elSharq.getReservationById(id);
+                        if (!detail) throw new Error("الحجز غير موجود");
+                        const payload = await requestReservationEdit(detail);
+                        if (!payload) return;
+                        const result = await window.elSharq.updateReservation(id, payload);
+                        window.alert(result.refundedAmount > 0
+                            ? `تم تعديل الحجز. تم رد ${money(result.refundedAmount)} ج.م نقدًا من الخزنة.\nالإجمالي الجديد: ${money(result.totalAmount)} ج.م`
+                            : `تم تعديل الحجز بنجاح.\nالإجمالي الجديد: ${money(result.totalAmount)} ج.م\nالمتبقي: ${money(result.remainingAmount)} ج.م`);
+                        await reservations();
+                    } catch (error) {
+                        window.alert(`تعذر تعديل الحجز: ${error?.message || "خطأ غير معروف"}`);
+                        try { await reservations(); } catch (refreshError) { console.error("Reservation refresh failed:", refreshError); }
+                    } finally {
+                        actionButton.disabled = false;
+                        actionButton.textContent = editButtonText;
+                    }
                     return;
                 }
 
@@ -2234,31 +2845,13 @@
                 actionButton.textContent = "جارٍ التنفيذ...";
                 try {
                     if (action === "payment") {
-                        const raw = window.prompt(
-                            `المتبقي على الحجز ${row.reservation_number}: ${money(row.remaining_amount)} ج.م\nاكتب قيمة الدفعة:`,
-                            String(row.remaining_amount || "")
-                        );
-                        if (raw === null) return;
-                        if (String(raw).trim() === "") throw new Error("اكتب مبلغ الدفعة.");
-                        const amount = Number(raw);
-                        if (!Number.isFinite(amount) || amount <= 0) throw new Error("مبلغ الدفعة يجب أن يكون أكبر من صفر.");
-                        if (amount > Number(row.remaining_amount || 0) + 0.000001) throw new Error("الدفعة أكبر من المتبقي على الحجز.");
+                        const amount = await requestReservationPaymentAmount(row);
+                        if (amount === null) return;
                         const result = await window.elSharq.addReservationPayment(id, amount);
                         window.alert(`تم تسجيل الدفعة في الخزنة الرئيسية.\nإجمالي المدفوع: ${money(result.paidAmount)} ج.م\nالمتبقي: ${money(result.remainingAmount)} ج.م`);
                     } else if (action === "deliver") {
-                        const raw = window.prompt(
-                            `المتبقي على الحجز ${row.reservation_number}: ${money(row.remaining_amount)} ج.م\nاكتب المبلغ الذي ستقبضه الآن. اكتب 0 إذا كان الباقي آجلًا:`,
-                            String(row.remaining_amount || 0)
-                        );
-                        if (raw === null) return;
-                        if (String(raw).trim() === "") throw new Error("اكتب مبلغ التحصيل، أو اكتب 0 إذا كان البيع آجلًا.");
-                        const amount = Number(raw);
-                        if (!Number.isFinite(amount) || amount < 0) throw new Error("مبلغ التحصيل غير صحيح.");
-                        if (amount > Number(row.remaining_amount || 0) + 0.000001) throw new Error("مبلغ التحصيل أكبر من المتبقي على الحجز.");
-                        const confirmed = window.confirm(
-                            `سيتم إنشاء فاتورة بيع ${row.reservation_number}، وخصم الكمية من المعرض والمخزن، وربط العربون والمدفوعات السابقة بالفاتورة دون تسجيلها مرة أخرى في الخزنة.\n\nهل تريد المتابعة؟`
-                        );
-                        if (!confirmed) return;
+                        const amount = await requestReservationDeliveryAmount(row);
+                        if (amount === null) return;
                         const result = await window.elSharq.deliverReservation(id, amount);
                         window.alert(`تم تسليم الحجز بنجاح.\nرقم الفاتورة: ${result.invoiceNumber}\nالإجمالي: ${money(result.totalAmount)} ج.م\nالمدفوع: ${money(result.paidAmount)} ج.م\nالمتبقي: ${money(result.remainingAmount)} ج.م`);
                     } else if (action === "cancel") {
@@ -2312,14 +2905,14 @@
             const expected = Number(current?.remaining_salary || 0);
             const payStatus = Number(worker.due_cycle_count || 0) > 0 ? `مستحق (${Number(worker.due_cycle_count)})` : (current ? `موعده ${dateText(current.due_date)}` : "لم تبدأ الدورة");
             return `<tr>
-                <td><strong>${escapeText(worker.name)}</strong><br><small>${escapeText(worker.job_title || "بدون مسمى وظيفي")}</small></td>
+                <td><strong>${escapeText(worker.name)}</strong><br><small>${escapeText(worker.job_title || "بدون مسمى وظيفي")}</small><br><small style="color:#0284c7; font-weight:600;">بداية العمل: ${dateText(worker.start_date)}</small></td>
                 <td>${escapeText(worker.phone || "-")}</td>
                 <td>${money(worker.monthly_salary)} ج.م</td>
                 <td>${money(currentAdvance)} ج.م</td>
                 <td><strong>${money(expected)} ج.م</strong></td>
                 <td>${payStatus}</td>
                 <td><span class="worker-status ${isActive ? "is-active" : "is-inactive"}">${isActive ? "نشط" : "غير نشط"}</span></td>
-                <td><div class="worker-actions"><button type="button" class="secondary-button" data-worker-action="view" data-id="${Number(worker.id)}">الحساب والنوتة</button><button type="button" class="secondary-button" data-worker-action="edit" data-id="${Number(worker.id)}">تعديل</button></div></td>
+                <td><div class="worker-actions"><button type="button" class="secondary-button" data-worker-action="view" data-id="${Number(worker.id)}">الحساب والنوتة</button><button type="button" class="secondary-button" data-worker-action="edit" data-id="${Number(worker.id)}">تعديل</button>${isActive ? `<button type="button" class="secondary-button" data-worker-action="stop" data-id="${Number(worker.id)}">إيقاف</button>` : ""}</div></td>
             </tr>`;
         }).join("");
 
@@ -2393,7 +2986,7 @@
                             <div class="form-field"><label for="workerPhone">رقم الهاتف</label><input id="workerPhone" type="tel" maxlength="40" value="${escapeText(editing?.phone || "")}" placeholder="رقم الهاتف (اختياري)"></div>
                             <div class="form-field"><label for="workerJobTitle">الوظيفة</label><input id="workerJobTitle" type="text" maxlength="100" value="${escapeText(editing?.job_title || "")}" placeholder="عامل / سائق / فني"></div>
                             <div class="form-field"><label for="workerSalary">المرتب الشهري (ج.م) *</label><input id="workerSalary" type="number" min="0.01" step="0.01" required value="${editing ? money(editing.monthly_salary).replace(/,/g, "") : ""}" placeholder="مثال: 4000"></div>
-                            <div class="form-field"><label for="workerStartDate">تاريخ بداية الشغل *</label><input id="workerStartDate" type="date" required value="${escapeText(editing?.start_date || todayForInput)}" ${editing ? "disabled" : ""}></div>
+                            <div class="form-field"><label for="workerStartDate">تاريخ بداية الشغل *</label><input id="workerStartDate" type="date" required value="${escapeText(editing?.start_date || todayForInput)}"></div>
                             ${editing ? `<div class="form-field"><label>حالة العامل</label><label class="worker-checkbox-row"><input id="workerIsActive" type="checkbox" ${Number(editing.is_active) === 1 ? "checked" : ""}> <span>العامل نشط ويستقبل سلفًا جديدة</span></label></div>` : `<div class="form-field"><span class="worker-help">دورة القبض تبدأ من يوم بداية العمل، وتتكرر شهريًا في نفس اليوم قدر الإمكان.</span></div>`}
                             <div class="form-field"><button class="primary-button" type="submit" id="workerSaveButton">${editing ? "حفظ التعديلات" : "+ إضافة العامل"}</button></div>
                         </div>
@@ -2445,7 +3038,7 @@
                 phone: page.querySelector("#workerPhone").value.trim(),
                 job_title: page.querySelector("#workerJobTitle").value.trim(),
                 monthly_salary: Number(page.querySelector("#workerSalary").value),
-                start_date: editing ? editing.start_date : page.querySelector("#workerStartDate").value,
+                start_date: page.querySelector("#workerStartDate")?.value || (editing ? editing.start_date : ""),
                 is_active: editing ? Boolean(page.querySelector("#workerIsActive")?.checked) : true
             };
             try {
@@ -2481,6 +3074,13 @@
                     } else if (action === "edit") {
                         await workers(selectedId, id);
                         page.querySelector("#workerName")?.focus();
+                    } else if (action === "stop") {
+                        const worker = (workerRows || []).find((entry) => Number(entry.id) === id);
+                        if (!worker || Number(worker.is_active) !== 1) throw new Error("العامل غير نشط بالفعل؛ حدّث الشاشة وحاول مرة أخرى.");
+                        if (!window.confirm(`تأكيد إيقاف العامل ${worker.name}؟\nسيُمنع تسجيل سلف جديدة له. ستظل بياناته ودوراته وسلفه ومرتباته السابقة محفوظة دون تغيير.`)) return;
+                        await window.elSharq.stopWorker(id);
+                        window.alert("تم إيقاف العامل مع الاحتفاظ بسجله وحركاته.");
+                        await workers(selectedId === id ? id : null);
                     } else if (action === "pay-cycle") {
                         const cycle = (ledger?.cycles || []).find((entry) => Number(entry.id) === id);
                         if (!cycle) throw new Error("تعذر تحديد دورة المرتب. حدّث الصفحة وحاول مرة أخرى.");

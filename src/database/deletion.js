@@ -21,19 +21,19 @@ function verifyDeletionPassword(db, password) {
     const salt = getSetting(db, SETTING_SALT);
     const storedHash = getSetting(db, SETTING_HASH);
     if (!salt || !storedHash || typeof password !== "string") {
-        throw new Error("اضبط كلمة مرور الحذف من الإعدادات أولًا");
+        throw new Error("اضبط كلمة المرور الموحدة من الإعدادات أولًا");
     }
 
     const actualHash = scryptSync(password, salt, 64);
     const expectedHash = Buffer.from(storedHash, "hex");
     if (expectedHash.length !== actualHash.length || !timingSafeEqual(expectedHash, actualHash)) {
-        throw new Error("كلمة مرور الحذف غير صحيحة");
+        throw new Error("كلمة المرور غير صحيحة");
     }
 }
 
 function setDeletionPassword(db, currentPassword, newPassword) {
-    if (typeof newPassword !== "string" || newPassword.length < 8) {
-        throw new Error("كلمة مرور الحذف يجب ألا تقل عن 8 أحرف");
+    if (typeof newPassword !== "string" || newPassword.trim().length < 4) {
+        throw new Error("كلمة المرور يجب أن تتكون من 4 أحرف أو أرقام على الأقل");
     }
 
     const storedHash = getSetting(db, SETTING_HASH);

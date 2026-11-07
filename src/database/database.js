@@ -913,6 +913,10 @@ insertCategory.run("سيراميك");
 insertCategory.run("أدوات صحية");
 insertCategory.run("خلاطات");
 insertCategory.run("إكسسوارات");
+insertCategory.run("كهرباء");
+insertCategory.run("نواكل");
+insertCategory.run("نجارة");
+insertCategory.run("حدايد");
 
 // أدوار المستخدمين
 const insertRole = db.prepare(`
@@ -1071,6 +1075,30 @@ if (!columnExists("products", "purchase_price_manual")) {
     db.exec(`ALTER TABLE products ADD COLUMN purchase_price_manual INTEGER NOT NULL DEFAULT 0`);
     console.log("Migration: Added column purchase_price_manual to products");
 }
+if (!columnExists("products", "ceramic_purchase_price_per_sqm")) {
+    db.exec(`ALTER TABLE products ADD COLUMN ceramic_purchase_price_per_sqm REAL DEFAULT NULL`);
+    console.log("Migration: Added column ceramic_purchase_price_per_sqm to products");
+}
+if (!columnExists("purchase_items", "display_quantity")) {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN display_quantity REAL DEFAULT NULL`);
+    console.log("Migration: Added column display_quantity to purchase_items");
+}
+if (!columnExists("purchase_items", "display_unit")) {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN display_unit TEXT DEFAULT NULL`);
+    console.log("Migration: Added column display_unit to purchase_items");
+}
+if (!columnExists("purchase_items", "display_unit_cost")) {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN display_unit_cost REAL DEFAULT NULL`);
+    console.log("Migration: Added column display_unit_cost to purchase_items");
+}
+if (!columnExists("purchase_items", "display_list_price")) {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN display_list_price REAL DEFAULT NULL`);
+    console.log("Migration: Added column display_list_price to purchase_items");
+}
+if (!columnExists("purchase_items", "previous_ceramic_purchase_price_per_sqm")) {
+    db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_ceramic_purchase_price_per_sqm REAL DEFAULT NULL`);
+    console.log("Migration: Added column previous_ceramic_purchase_price_per_sqm to purchase_items");
+}
 if (!columnExists("purchase_items", "previous_purchase_price")) {
     db.exec(`ALTER TABLE purchase_items ADD COLUMN previous_purchase_price REAL DEFAULT NULL`);
     console.log("Migration: Added column previous_purchase_price to purchase_items");
@@ -1119,6 +1147,11 @@ if (!columnExists("sales", "is_hidden")) {
     db.exec(`ALTER TABLE sales ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0`);
     console.log("Migration: Added column is_hidden to sales");
 }
+if (!columnExists("sales", "customer_phone")) {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_phone TEXT DEFAULT NULL`);
+    console.log("Migration: Added column customer_phone to sales");
+}
+
 // ---------- حفظ وحدة وكمية وسعر البيع الظاهر في بند الفاتورة ----------
 if (!columnExists("sale_items", "display_quantity")) {
     db.exec(`ALTER TABLE sale_items ADD COLUMN display_quantity REAL DEFAULT NULL`);
@@ -1181,11 +1214,68 @@ console.log("Migration: product_sets and product_set_items tables ready.");
 reportStartupProgress(82, "جاري تحميل البيانات الأساسية...");
 
 const seedRadixPlumbingCatalog = require("./seed-radix-plumbing");
-const radixCatalogResult = seedRadixPlumbingCatalog(db);
-if (radixCatalogResult.imported) {
-    console.log(`Imported ${radixCatalogResult.added} Radix plumbing products.`);
-}
+const radixSeedResult = seedRadixPlumbingCatalog(db);
+console.log("Radix plumbing catalog bootstrap:", radixSeedResult);
 reportStartupProgress(86, "جاري تجهيز النظام...");
+
+
+// Import approved catalogs once; add only missing codes and preserve all existing products.
+// All inserted stock rows start at zero. The SQLite transaction prevents partial imports.
+const catalogImportMarker = "catalog.client-products-858-and-electricity-v1";
+const catalogImportDone = db.prepare("SELECT setting_value FROM settings WHERE setting_key = ?").get(catalogImportMarker);
+if (!catalogImportDone) {
+  const catalogFiles = [
+    path.join(__dirname, "data", "el-sharq-products-prices.json"),
+    path.join(__dirname, "data", "el-sharq-electric-products-import.json"),
+  ];
+  const payloads = catalogFiles.map((file) => {
+    if (!fs.existsSync(file)) throw new Error("ملف كتالوج مطلوب غير موجود: " + path.basename(file));
+    const payload = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, ""));
+    if (!payload || payload.format !== "el-sharq-product-prices" || payload.version !== 1 || !Array.isArray(payload.products)) {
+      throw new Error("صيغة كتالوج غير مدعومة: " + path.basename(file));
+    }
+    return payload.products;
+  });
+  const products = payloads.flat();
+  const codeSet = new Set();
+  for (const product of products) {
+    const code = String(product.internal_code || "").trim();
+    const name = String(product.name || "").trim();
+    const categoryName = String(product.category_name || "").trim();
+    if (!code || !name || !categoryName || codeSet.has(code)) {
+      throw new Error("كتالوج العميل يحتوي كودًا مكررًا أو بيانات منتج ناقصة.");
+    }
+    codeSet.add(code);
+  }
+  const findCategory = db.prepare("SELECT id FROM categories WHERE name = ? AND is_active = 1");
+  const findCode = db.prepare("SELECT id FROM products WHERE internal_code = ?");
+  const locations = db.prepare("SELECT id FROM locations WHERE name IN ('المعرض', 'المخزن') AND is_active = 1").all();
+  if (locations.length !== 2) throw new Error("أماكن المعرض والمخزن غير جاهزة لتحميل الكتالوج.");
+  const insertProduct = db.prepare("INSERT INTO products (internal_code, barcode, name, category_id, unit, purchase_price, purchase_price_manual, sale_price, minimum_stock, is_active, tile_length_cm, tile_width_cm, tiles_per_carton, company_discount_percent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)");
+  const insertStock = db.prepare("INSERT INTO stock (product_id, location_id, quantity) VALUES (?, ?, 0)");
+  const insertMarker = db.prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)");
+  let addedCount = 0;
+  db.transaction(() => {
+    for (const product of products) {
+      // Existing catalog items are left completely unchanged, including any business edits.
+      if (findCode.get(product.internal_code)) continue;
+      const category = findCategory.get(product.category_name);
+      if (!category) throw new Error("القسم غير موجود للمنتج " + product.internal_code + ": " + product.category_name);
+      const inserted = insertProduct.run(
+        product.internal_code, product.barcode || null, product.name, category.id,
+        product.unit || "قطعة", Number(product.purchase_price),
+        product.purchase_price_manual ? 1 : 0, Number(product.sale_price),
+        product.is_active ? 1 : 0, product.tile_length_cm ?? null,
+        product.tile_width_cm ?? null, product.tiles_per_carton ?? null,
+        Number(product.company_discount_percent || 0)
+      );
+      addedCount += 1;
+      for (const location of locations) insertStock.run(Number(inserted.lastInsertRowid), location.id);
+    }
+    insertMarker.run(catalogImportMarker, String(addedCount));
+  })();
+  console.log("Approved catalog bootstrap complete; products available:", products.length, "; newly added on first import:", addedCount);
+}
 
 console.log("El-Sharq database initialized successfully.");
 

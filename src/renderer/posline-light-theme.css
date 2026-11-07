@@ -1,0 +1,1069 @@
+:root {
+  --bg: #f4f6f8;
+  --sidebar: #ffffff;
+  --card: #ffffff;
+  --card-hover: #f7f9fc;
+  --card-2: #f8fafc;
+  --border: rgba(31, 41, 55, .12);
+  --border-strong: rgba(79, 128, 231, .38);
+  --text: #1f2937;
+  --text-soft: #4b5563;
+  --muted: #6b7280;
+  --accent: #4f80e7;
+  --accent-strong: #3367c4;
+  --accent-soft: rgba(79, 128, 231, .12);
+  --accent-line: rgba(79, 128, 231, .35);
+  --purple: #e8edff;
+  --purple-light: #6b75d6;
+  --success: #10a66a;
+  --warning: #d98912;
+  --blue: #4f80e7;
+  --shadow: rgba(31, 41, 55, .10);
+  --success-soft: rgba(16, 166, 106, .12);
+  --success-line: rgba(16, 166, 106, .28);
+}
+
+html, body {
+  background: #f4f6f8 !important;
+  color: #1f2937 !important;
+}
+body {
+  background:
+    radial-gradient(ellipse at 88% 0%, rgba(79, 128, 231, .07), transparent 28%),
+    #f4f6f8 !important;
+}
+body::before { display: none !important; }
+
+.sidebar {
+  background: #ffffff !important;
+  border-left: 1px solid #e5e7eb !important;
+  box-shadow: 0 2px 18px rgba(31, 41, 55, .05) !important;
+}
+.brand { border-color: #e5e7eb !important; }
+.brand-icon, .user-avatar {
+  background: linear-gradient(145deg, #6d98f0, #4f80e7) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(79, 128, 231, .2) !important;
+}
+.brand h1 { color: #1f2937 !important; }
+.brand-kicker { color: #4f80e7 !important; }
+.brand span, .user-info span { color: #6b7280 !important; }
+
+.sidebar .menu-item {
+  color: #4b5563 !important;
+  border-color: transparent !important;
+}
+.sidebar .menu-item.active {
+  color: #3267c5 !important;
+  background: #eaf1ff !important;
+  border-color: #d7e4ff !important;
+  box-shadow: inset 3px 0 #4f80e7 !important;
+}
+.sidebar .menu-item:hover {
+  color: #3267c5 !important;
+  background: #f4f7fc !important;
+}
+.menu-category-label {
+  color: #7b8492 !important;
+  border-top-color: #edf0f4 !important;
+}
+.sidebar-footer { border-top-color: #e5e7eb !important; }
+
+.main { color: #1f2937 !important; }
+.topbar { border-bottom-color: #e5e7eb !important; }
+.topbar h2, .page-header h2, .panel-header h3,
+.products-panel h3, .last-invoices-panel h3,
+.sales-panel-header h3 { color: #1f2937 !important; }
+.topbar p, .page-header p, .panel-header span,
+.brand span, .user-info span { color: #6b7280 !important; }
+.eyebrow, .topbar-title .eyebrow,
+.eyebrow-header, .analytics-eyebrow, .small-label {
+  color: #4778d7 !important;
+}
+.brand-pill, .date-box, .icon-button {
+  color: #374151 !important;
+  background: #ffffff !important;
+  border-color: #e1e6ed !important;
+  box-shadow: 0 2px 8px rgba(31, 41, 55, .04) !important;
+}
+.brand-pill span, .date-box strong { color: #1f2937 !important; }
+.brand-pill small { color: #4778d7 !important; }
+
+.welcome-card {
+  background:
+    linear-gradient(120deg, #eaf1ff, #f8faff 72%) !important;
+  border-color: #d7e4ff !important;
+  box-shadow: 0 8px 24px rgba(79, 128, 231, .08) !important;
+}
+.welcome-card h3 { color: #1f2937 !important; }
+.welcome-card p { color: #566273 !important; }
+
+.stat-card, .quick-card, .panel, .products-panel,
+.last-invoices-panel, .sales-panel, .sales-analytics-panel,
+.stock-location-panel {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #e5e9ef !important;
+  box-shadow: 0 4px 16px rgba(31, 41, 55, .05) !important;
+}
+.stat-card span, .quick-card span,
+.stat-card strong, .quick-card strong { color: #374151 !important; }
+.panel-header, .sales-panel-header {
+  border-bottom-color: #e9edf2 !important;
+}
+.panel-header button { color: #4b5563 !important; }
+
+.products-table, .last-invoices-table, .low-stock-table,
+.stock-location-table, .sale-return-table {
+  color: #374151 !important;
+  background: #ffffff !important;
+}
+.products-table thead, .last-invoices-table thead,
+.low-stock-table thead, .stock-location-table thead {
+  background: #f1f5f9 !important;
+}
+.products-table th, .last-invoices-table th,
+.low-stock-table th, .stock-location-table th,
+.sale-return-table th {
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+  border-color: #e5e9ef !important;
+}
+.products-table td, .last-invoices-table td,
+.low-stock-table td, .stock-location-table td,
+.sale-return-table td {
+  color: #374151 !important;
+  border-color: #edf0f4 !important;
+}
+.products-table td strong, .last-invoices-table td strong,
+.stock-location-table td strong { color: #1f2937 !important; }
+.products-table tbody tr:hover, .last-invoices-table tbody tr:hover,
+.low-stock-table tbody tr:hover, .stock-location-table tbody tr:hover {
+  background: #f4f8ff !important;
+}
+.product-catalog-table .product-actions-cell,
+.product-catalog-table th:last-child {
+  background: #ffffff !important;
+}
+
+.search-box, .product-count, .form-field input,
+.form-field select, .stock-box input, .stock-quantity-form input,
+.product-picker-field > input, .purchase-field-sm input,
+.invoice-search-input, .sale-return-table input,
+.sale-return-table select, .sale-return-notes textarea,
+input:not([type="checkbox"]):not([type="radio"]),
+select, textarea {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #d8dee8 !important;
+}
+input::placeholder, textarea::placeholder,
+.search-box input::placeholder, .invoice-search-input::placeholder {
+  color: #8a94a3 !important;
+}
+.form-field input:focus, .form-field select:focus,
+.stock-box input:focus, .search-box:focus-within,
+.invoice-search-input:focus {
+  border-color: #4f80e7 !important;
+  box-shadow: 0 0 0 3px rgba(79, 128, 231, .12) !important;
+}
+
+.primary-button, .sale-pay-all-button, .sale-save-button {
+  color: #ffffff !important;
+  background: #4f80e7 !important;
+  border-color: #4f80e7 !important;
+  box-shadow: 0 4px 10px rgba(79, 128, 231, .16) !important;
+}
+.primary-button:hover, .sale-pay-all-button:hover, .sale-save-button:hover {
+  background: #3d70d4 !important;
+}
+.secondary-button, .icon-button {
+  color: #374151 !important;
+  background: #ffffff !important;
+  border-color: #d8dee8 !important;
+}
+.secondary-button:hover, .icon-button:hover {
+  background: #f3f6fb !important;
+}
+.product-modal-box, .low-stock-modal-box,
+.sale-return-card, .specialty-card, .remaining-box,
+.trader-discount-card, .live-summary, .purchase-quick-bar {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #e1e6ed !important;
+}
+.product-modal-header, .low-stock-modal-header,
+.product-modal-footer { border-color: #e5e9ef !important; }
+.product-modal-header h2, .product-modal-box label,
+.low-stock-modal-box, .sale-return-card {
+  color: #1f2937 !important;
+}
+
+.products-table-wrapper, .last-invoices-table-wrapper,
+.low-stock-table-wrap { background: #ffffff !important; }
+::-webkit-scrollbar-track { background: #edf0f4 !important; }
+::-webkit-scrollbar-thumb {
+  background: #c4ccd7 !important;
+  border: 2px solid #edf0f4 !important;
+}
+.chart-line { stroke: #4f80e7 !important; }
+
+/* === POSLINE NAVY SIDEBAR OVERRIDE START === */
+.sidebar {
+  color: #dce7f7 !important;
+  background: #071a33 !important;
+  border-left: 1px solid #183454 !important;
+  box-shadow: 0 2px 18px rgba(4, 16, 34, .18) !important;
+}
+.brand { border-color: #183454 !important; }
+.brand h1 { color: #ffffff !important; }
+.brand span, .user-info span { color: #91a8c4 !important; }
+.brand-kicker { color: #83aaff !important; }
+.brand-icon, .user-avatar {
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #3475dc, #4f80e7) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .18) !important;
+}
+.sidebar .menu-item {
+  color: #b7c8de !important;
+  border-color: transparent !important;
+}
+.sidebar .menu-item.active {
+  color: #ffffff !important;
+  background: #122e50 !important;
+  border-color: #1b426b !important;
+  box-shadow: inset 3px 0 #4f80e7 !important;
+}
+.sidebar .menu-item:hover {
+  color: #ffffff !important;
+  background: #102944 !important;
+}
+.menu-category-label {
+  color: #7892b1 !important;
+  border-top-color: #183454 !important;
+}
+.sidebar-footer {
+  color: #91a8c4 !important;
+  border-top-color: #183454 !important;
+}
+/* === POSLINE NAVY SIDEBAR OVERRIDE END === */
+
+/* === EL SHARQ CONTRAST FIX START === */
+
+/* الرئيسية: نصوص واضحة وبطاقات متناسقة */
+.main .dashboard .welcome-card {
+  color: #1f2937 !important;
+  background: linear-gradient(120deg, #eaf1ff, #ffffff 76%) !important;
+  border: 1px solid #d7e4ff !important;
+  box-shadow: 0 8px 24px rgba(31, 41, 55, .08) !important;
+}
+.main .dashboard .welcome-card h3 { color: #1f2937 !important; }
+.main .dashboard .welcome-card p { color: #526174 !important; }
+.main .dashboard .welcome-card .small-label,
+.main .dashboard .section-header h3 { color: #3267c5 !important; }
+.main .dashboard .section-header span { color: #596579 !important; }
+
+.main .dashboard .stat-card,
+.main .dashboard .quick-card,
+.main .dashboard .panel {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #dce3ec !important;
+  box-shadow: 0 4px 16px rgba(31, 41, 55, .06) !important;
+}
+.main .dashboard .stat-card span,
+.main .dashboard .quick-card span { color: #566273 !important; }
+.main .dashboard .stat-card strong,
+.main .dashboard .quick-card strong,
+.main .dashboard .panel-header h3 { color: #1f2937 !important; }
+.main .dashboard .quick-card:hover {
+  background: #f4f8ff !important;
+  border-color: #9dbbf5 !important;
+}
+.main .dashboard .quick-card > div {
+  color: #3267c5 !important;
+  background: #eaf1ff !important;
+}
+.main .dashboard .panel-header { border-bottom-color: #e3e9f0 !important; }
+
+/* الحجوزات: مساحة فاتحة وحقول عالية التباين */
+.main .reservation-screen { color: #1f2937 !important; }
+.main .reservation-screen .reservation-hero {
+  color: #1f2937 !important;
+  background: linear-gradient(120deg, #eaf1ff, #ffffff 78%) !important;
+  border-color: #d7e4ff !important;
+  box-shadow: 0 8px 24px rgba(31, 41, 55, .07) !important;
+}
+.main .reservation-screen .reservation-hero h2 { color: #1f2937 !important; }
+.main .reservation-screen .reservation-hero p { color: #526174 !important; }
+.main .reservation-screen .reservation-eyebrow { color: #3267c5 !important; }
+
+.main .reservation-screen .reservation-stat,
+.main .reservation-screen .reservation-card {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #dce3ec !important;
+  box-shadow: 0 4px 16px rgba(31, 41, 55, .05) !important;
+}
+.main .reservation-screen .reservation-stat span,
+.main .reservation-screen .reservation-stat small,
+.main .reservation-screen .reservation-card-heading p,
+.main .reservation-screen .reservation-hint,
+.main .reservation-screen .reservation-section-label span,
+.main .reservation-screen .reservation-date,
+.main .reservation-screen .reservation-empty {
+  color: #596579 !important;
+}
+.main .reservation-screen .reservation-stat strong,
+.main .reservation-screen .reservation-card-heading h3,
+.main .reservation-screen .reservation-section-label strong,
+.main .reservation-screen .reservation-empty strong {
+  color: #1f2937 !important;
+}
+.main .reservation-screen .reservation-card-heading {
+  border-bottom-color: #e3e9f0 !important;
+}
+.main .reservation-screen input,
+.main .reservation-screen select,
+.main .reservation-screen textarea {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: none !important;
+}
+.main .reservation-screen input::placeholder,
+.main .reservation-screen textarea::placeholder {
+  color: #718096 !important;
+  opacity: 1 !important;
+}
+.main .reservation-screen input:focus,
+.main .reservation-screen select:focus,
+.main .reservation-screen textarea:focus {
+  border-color: #4f80e7 !important;
+  box-shadow: 0 0 0 3px rgba(79, 128, 231, .16) !important;
+}
+.main .reservation-screen input[readonly] {
+  color: #1f2937 !important;
+  background: #f1f5f9 !important;
+}
+.main .reservation-screen input[type="date"] { color-scheme: light !important; }
+
+.main .reservation-screen .reservation-item-row {
+  background: #f8fafc !important;
+  border-color: #dce3ec !important;
+}
+.main .reservation-screen .reservation-search-icon,
+.main .reservation-screen .reservation-selected-meta,
+.main .reservation-screen .reservation-no-match {
+  color: #596579 !important;
+}
+.main .reservation-screen .reservation-product-dropdown {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+.main .reservation-screen .reservation-suggestion {
+  color: #1f2937 !important;
+}
+.main .reservation-screen .reservation-suggestion-main strong {
+  color: #1f2937 !important;
+}
+.main .reservation-screen .reservation-suggestion-main small {
+  color: #596579 !important;
+}
+.main .reservation-screen .reservation-suggestion:hover,
+.main .reservation-screen .reservation-suggestion.reservation-suggestion-active {
+  background: #eaf1ff !important;
+  border-color: #c8d9fb !important;
+}
+.main .reservation-screen .reservation-suggestion-price,
+.main .reservation-screen .reservation-number,
+.main .reservation-screen .reservation-total strong {
+  color: #3267c5 !important;
+}
+.main .reservation-screen .reservation-total {
+  background: #eaf1ff !important;
+  border-color: #c8d9fb !important;
+}
+.main .reservation-screen .reservation-total span { color: #43536a !important; }
+.main .reservation-screen .reservation-table-wrap {
+  border-color: #dce3ec !important;
+}
+.main .reservation-screen .reservation-table th {
+  color: #334155 !important;
+  background: #eef2f7 !important;
+  border-color: #dce3ec !important;
+}
+.main .reservation-screen .reservation-table td {
+  color: #334155 !important;
+  border-color: #e5eaf0 !important;
+}
+.main .reservation-screen .reservation-table tbody tr,
+.main .reservation-screen .reservation-table tbody tr:nth-child(even) {
+  background: #ffffff !important;
+}
+.main .reservation-screen .reservation-table tbody tr:hover {
+  background: #f4f8ff !important;
+}
+.main .reservation-screen .reservation-actions button.primary-button {
+  color: #ffffff !important;
+  background: #4f80e7 !important;
+  border-color: #4f80e7 !important;
+}
+.main .reservation-screen .secondary-button,
+.main .reservation-screen .reservation-add-item {
+  color: #334155 !important;
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* المشتريات والفواتير: إزالة المساحات الداكنة غير المتناسقة */
+.main .sales-panel {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #dce3ec !important;
+  box-shadow: 0 4px 16px rgba(31, 41, 55, .05) !important;
+}
+.main .sales-panel-header {
+  border-bottom-color: #e3e9f0 !important;
+}
+.main .sales-panel-header h3 { color: #1f2937 !important; }
+.main .sales-panel-header span,
+.main .sales-panel .form-field label,
+.main .sales-panel .purchase-field-sm label,
+.main .sales-panel .purchase-item-picker label {
+  color: #475569 !important;
+}
+.main .sales-panel #purchaseForm .purchase-top-grid {
+  background: #f1f5f9 !important;
+  border-color: #dce3ec !important;
+}
+.main .sales-panel #purchaseForm .purchase-quick-bar {
+  background: #eef4ff !important;
+  border-color: #ccdbf7 !important;
+}
+.main .sales-panel #purchaseForm input,
+.main .sales-panel #purchaseForm select,
+.main .sales-panel #purchaseForm textarea,
+.main .sales-panel .sale-add-product input,
+.main .sales-panel .sale-add-product select,
+.main .sales-panel .sale-info-grid input,
+.main .sales-panel .sale-info-grid select,
+.main .sales-panel .sale-notes textarea,
+.main .sales-panel .sale-totals input,
+.main .sales-panel .purchase-field-sm input {
+  color: #1f2937 !important;
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+.main .sales-panel input::placeholder,
+.main .sales-panel textarea::placeholder {
+  color: #718096 !important;
+  opacity: 1 !important;
+}
+.main .sales-panel #purchaseForm input:focus,
+.main .sales-panel #purchaseForm select:focus,
+.main .sales-panel #purchaseForm textarea:focus {
+  border-color: #4f80e7 !important;
+  box-shadow: 0 0 0 3px rgba(79, 128, 231, .14) !important;
+}
+.main .sales-panel .purchase-net-preview { color: #3267c5 !important; }
+.main .sales-panel .sale-totals,
+.main .sales-panel .remaining-box {
+  color: #334155 !important;
+  background: #f8fafc !important;
+  border-color: #dce3ec !important;
+}
+.main .sales-panel .total-row { color: #475569 !important; }
+.main .sales-panel .total-row strong,
+.main .sales-panel .remaining-box strong { color: #1f2937 !important; }
+
+/* === EL SHARQ CONTRAST FIX END === */
+
+/* === EL SHARQ CONTRAST FIX V2 START === */
+
+/* مساحة العمل: فاتحة ونصوص داكنة عالية الوضوح */
+:root {
+  --bg: #f3f6fb;
+  --card: #ffffff;
+  --card-hover: #f1f6ff;
+  --card-2: #f8fafc;
+  --border: #d7e0eb;
+  --text: #1e293b;
+  --text-soft: #334155;
+  --muted: #526174;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: #dbeafe;
+  --accent-line: #93c5fd;
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --success-line: #86efac;
+  --shadow: rgba(31, 41, 55, .10);
+}
+
+html,
+body {
+  background: #f3f6fb !important;
+  color: #1e293b !important;
+}
+
+.main {
+  background: #f3f6fb !important;
+  color: #1e293b !important;
+}
+
+/* وضوح العناوين والنصوص والبيانات */
+.main h1,
+.main h2,
+.main h3,
+.main h4,
+.main p,
+.main span,
+.main label,
+.main small,
+.main strong,
+.main th,
+.main td,
+.main .eyebrow,
+.main .form-field label {
+  color: #1e293b !important;
+}
+
+.main .topbar,
+.main .topbar-title h2,
+.main .page-header h2,
+.main .section-header h3,
+.main .panel-header h3,
+.main .sales-panel-header h3 {
+  color: #172033 !important;
+}
+
+.main .topbar p,
+.main .page-header p,
+.main .section-header span,
+.main .panel-header span,
+.main .sales-panel-header span,
+.main .form-field label {
+  color: #526174 !important;
+}
+
+/* الرئيسية: بطاقات بيضاء وحدود واضحة */
+.main .dashboard .welcome-card {
+  color: #172033 !important;
+  background: linear-gradient(120deg, #e8f0ff, #ffffff 78%) !important;
+  border: 1px solid #c8d9f5 !important;
+  box-shadow: 0 8px 22px rgba(31, 41, 55, .09) !important;
+}
+.main .dashboard .welcome-card h3 { color: #172033 !important; }
+.main .dashboard .welcome-card p { color: #40516a !important; }
+.main .dashboard .welcome-card .small-label { color: #1d4ed8 !important; }
+.main .dashboard .welcome-icon {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #2563eb, #1e40af) !important;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, .3) !important;
+}
+
+.main .dashboard .stat-card,
+.main .dashboard .quick-card,
+.main .dashboard .panel,
+.main .dashboard .products-panel,
+.main .dashboard .last-invoices-panel {
+  color: #1e293b !important;
+  background: #ffffff !important;
+  border: 1px solid #d7e0eb !important;
+  box-shadow: 0 5px 18px rgba(31, 41, 55, .07) !important;
+}
+.main .dashboard .stat-card span,
+.main .dashboard .quick-card span {
+  color: #526174 !important;
+}
+.main .dashboard .stat-card strong,
+.main .dashboard .quick-card strong,
+.main .dashboard .panel-header h3 {
+  color: #172033 !important;
+}
+.main .dashboard .quick-card > div {
+  color: #1d4ed8 !important;
+  background: #e8f0ff !important;
+}
+
+/* الحجوزات: كروت وحقول فاتحة ونصوص مقروءة */
+.main .reservation-screen,
+.main .reservation-screen * {
+  color: #1e293b;
+}
+.main .reservation-screen .reservation-hero {
+  color: #172033 !important;
+  background: linear-gradient(120deg, #e8f0ff, #ffffff 78%) !important;
+  border-color: #c8d9f5 !important;
+}
+.main .reservation-screen .reservation-hero h2,
+.main .reservation-screen .reservation-card-heading h3,
+.main .reservation-screen .reservation-stat strong {
+  color: #172033 !important;
+}
+.main .reservation-screen .reservation-hero p,
+.main .reservation-screen .reservation-card-heading p,
+.main .reservation-screen .reservation-stat span,
+.main .reservation-screen .reservation-stat small,
+.main .reservation-screen .reservation-date,
+.main .reservation-screen .reservation-hint {
+  color: #526174 !important;
+}
+.main .reservation-screen .reservation-eyebrow,
+.main .reservation-screen .reservation-number,
+.main .reservation-screen .reservation-total strong {
+  color: #1d4ed8 !important;
+}
+.main .reservation-screen .reservation-card,
+.main .reservation-screen .reservation-stat {
+  color: #1e293b !important;
+  background: #ffffff !important;
+  border-color: #d7e0eb !important;
+  box-shadow: 0 5px 18px rgba(31, 41, 55, .06) !important;
+}
+.main .reservation-screen input,
+.main .reservation-screen select,
+.main .reservation-screen textarea {
+  color: #172033 !important;
+  background: #ffffff !important;
+  border: 1px solid #b8c5d6 !important;
+}
+.main .reservation-screen input::placeholder,
+.main .reservation-screen textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+.main .reservation-screen input:focus,
+.main .reservation-screen select:focus,
+.main .reservation-screen textarea:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .2) !important;
+}
+.main .reservation-screen input[readonly] {
+  background: #eef2f7 !important;
+}
+.main .reservation-screen .reservation-table th {
+  color: #26364d !important;
+  background: #e8eef6 !important;
+}
+.main .reservation-screen .reservation-table td {
+  color: #334155 !important;
+  border-color: #dce3ec !important;
+}
+.main .reservation-screen .reservation-table tbody tr,
+.main .reservation-screen .reservation-table tbody tr:nth-child(even) {
+  background: #ffffff !important;
+}
+.main .reservation-screen .reservation-total {
+  color: #172033 !important;
+  background: #e8f0ff !important;
+  border-color: #b8cff5 !important;
+}
+
+/* المشتريات والفواتير: إزالة الخلفيات الفحمية */
+.main .sales-panel {
+  color: #1e293b !important;
+  background: #ffffff !important;
+  border: 1px solid #d7e0eb !important;
+  box-shadow: 0 5px 18px rgba(31, 41, 55, .06) !important;
+}
+.main .sales-panel .purchase-top-grid {
+  background: #f1f5f9 !important;
+  border: 1px solid #d7e0eb !important;
+}
+.main .sales-panel .purchase-quick-bar {
+  background: #eaf1ff !important;
+  border: 1px solid #c8d9f5 !important;
+}
+.main .sales-panel input,
+.main .sales-panel select,
+.main .sales-panel textarea,
+.main .sales-panel .purchase-field-sm input {
+  color: #172033 !important;
+  background: #ffffff !important;
+  border: 1px solid #b8c5d6 !important;
+}
+.main .sales-panel input::placeholder,
+.main .sales-panel textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+.main .sales-panel .purchase-net-preview { color: #1d4ed8 !important; }
+
+/* زر أزرق واضح، أخضر للحالات الناجحة */
+.main button.primary-button,
+.main button.primary-button * {
+  color: #ffffff !important;
+  background: #2563eb !important;
+}
+.main button.primary-button:hover {
+  background: #1d4ed8 !important;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, .38) !important;
+}
+.main .success,
+.main .status-success,
+.main .badge-success {
+  color: #166534 !important;
+  background-color: #dcfce7 !important;
+}
+
+/* حركة واضحة عند المرور والتركيز */
+.main .dashboard .quick-card,
+.main button,
+.main .reservation-screen button,
+.sidebar .menu-item {
+  transition: transform .18s ease, color .18s ease,
+              background-color .18s ease, border-color .18s ease,
+              box-shadow .18s ease !important;
+}
+.main .dashboard .quick-card:hover {
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, .2) !important;
+  transform: translateY(-3px) !important;
+}
+.main button:not(.primary-button):hover,
+.main .reservation-screen button:not(.primary-button):hover {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 5px 16px rgba(37, 99, 235, .2) !important;
+}
+.main button:focus-visible,
+.main a:focus-visible,
+.sidebar .menu-item:focus-visible {
+  outline: 3px solid #60a5fa !important;
+  outline-offset: 2px !important;
+}
+
+/* إبقاء القائمة كحلية مع تمييز أزرق ظاهر */
+.sidebar {
+  background: linear-gradient(180deg, #102747, #071a33) !important;
+}
+.sidebar .menu-item:hover,
+.sidebar .menu-item.active {
+  color: #ffffff !important;
+  background-color: #1d4ed8 !important;
+  box-shadow: 0 5px 16px rgba(37, 99, 235, .32) !important;
+  transform: translateX(-2px);
+}
+
+/* === EL SHARQ CONTRAST FIX V2 END === */
+
+/* === EL SHARQ PRODUCT FORM FIX START === */
+
+/* نافذة إضافة وتعديل المنتج */
+.product-modal .product-modal-box {
+  color: #172033 !important;
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, .24) !important;
+}
+.product-modal .product-modal-header {
+  background: #ffffff !important;
+  border-bottom-color: #dce3ec !important;
+}
+.product-modal .product-modal-header h2,
+.product-modal .product-modal-header span {
+  color: #172033 !important;
+}
+.product-modal .product-modal-header span,
+.product-modal .product-code-hint,
+.product-modal .stock-section-title span {
+  color: #526174 !important;
+}
+
+/* أسماء الحقول والقيم */
+.product-modal .product-modal-box .form-field label,
+.product-modal .product-modal-box .specialty-card label,
+.product-modal .product-modal-box .stock-box label,
+.product-modal .product-modal-box .product-active-toggle,
+.product-modal .product-modal-box .stock-section-title strong {
+  color: #26364d !important;
+}
+.product-modal .product-modal-box input:not([type="checkbox"]),
+.product-modal .product-modal-box select,
+.product-modal .product-modal-box textarea,
+.product-modal .product-modal-box .lock-toggle-group input {
+  color: #172033 !important;
+  background: #ffffff !important;
+  border-color: #b8c5d6 !important;
+  color-scheme: light !important;
+}
+.product-modal .product-modal-box select option {
+  color: #172033 !important;
+  background: #ffffff !important;
+}
+.product-modal .product-modal-box input::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+.product-modal .product-modal-box input:focus,
+.product-modal .product-modal-box select:focus,
+.product-modal .product-modal-box textarea:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .20) !important;
+  outline: none !important;
+}
+
+/* رصيد المعرض والمخزن */
+.product-modal .product-modal-box .stock-section {
+  background: #ffffff !important;
+  border: 1px solid #d7e0eb !important;
+}
+.product-modal .product-modal-box .stock-box {
+  background: #f1f5f9 !important;
+  border: 1px solid #d7e0eb !important;
+}
+.product-modal .product-modal-box .stock-box label {
+  color: #26364d !important;
+}
+.product-modal .product-modal-box .stock-box input {
+  color: #172033 !important;
+  background: #ffffff !important;
+  border-color: #b8c5d6 !important;
+}
+.product-modal .product-modal-box .stock-box > span {
+  color: #526174 !important;
+}
+
+/* البطاقات التخصصية وملخصات المنتج */
+.product-modal .product-modal-box .specialty-card,
+.product-modal .product-modal-box .live-summary,
+.product-modal .product-modal-box .live-summary.plumbing {
+  color: #26364d !important;
+  background: #f8fafc !important;
+  border-color: #d7e0eb !important;
+}
+.product-modal .product-modal-box .live-summary-title,
+.product-modal .product-modal-box .live-summary-item,
+.product-modal .product-modal-box .live-summary strong,
+.product-modal .product-modal-box .live-summary span {
+  color: #334155 !important;
+}
+
+/* زر قفل سعر الشراء وأزرار النافذة */
+.product-modal .product-modal-box .lock-toggle-btn {
+  color: #1e40af !important;
+  background: #e8f0ff !important;
+  border-color: #b8cff5 !important;
+}
+.product-modal .product-modal-box .product-modal-footer {
+  border-top-color: #dce3ec !important;
+}
+.product-modal .product-modal-box .primary-button,
+.product-modal .product-modal-box .primary-button:hover {
+  color: #ffffff !important;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+}
+.product-modal .product-modal-box .secondary-button {
+  color: #26364d !important;
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* مفتاح إظهار الأصناف الموقوفة */
+.main .products-toolbar .product-archive-toggle {
+  color: #26364d !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+}
+.main .products-toolbar .product-archive-toggle input {
+  accent-color: #2563eb !important;
+}
+.main .products-toolbar .product-archive-toggle:hover {
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 5px 16px rgba(37, 99, 235, .18) !important;
+}
+
+/* تمييز واضح عند المرور والتركيز */
+.product-modal .product-modal-box button,
+.main .products-toolbar .product-archive-toggle {
+  transition: background-color .18s ease, color .18s ease,
+              border-color .18s ease, box-shadow .18s ease,
+              transform .18s ease !important;
+}
+.product-modal .product-modal-box button:focus-visible,
+.main .products-toolbar .product-archive-toggle:focus-within {
+  outline: 3px solid #60a5fa !important;
+  outline-offset: 2px !important;
+}
+
+/* === EL SHARQ PRODUCT FORM FIX END === */
+
+/* === EL SHARQ ACTION CONTRAST FIX START === */
+
+/* أزرار معاينة الفاتورة وتعديلها: تباين واضح */
+.main button.view-btn,
+.main button.view-btn *,
+.main button.edit-btn,
+.main button.edit-btn * {
+  color: #1d4ed8 !important;
+}
+.main button.view-btn {
+  background: #eff6ff !important;
+  border: 1px solid #93c5fd !important;
+}
+.main button.edit-btn {
+  background: #dbeafe !important;
+  border: 1px solid #93c5fd !important;
+}
+.main button.view-btn:hover,
+.main button.edit-btn:hover {
+  color: #ffffff !important;
+  background: #2563eb !important;
+  border-color: #1d4ed8 !important;
+  box-shadow: 0 5px 14px rgba(37, 99, 235, .24) !important;
+}
+.main button.view-btn:disabled,
+.main button.edit-btn:disabled {
+  color: #475569 !important;
+  background: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  cursor: not-allowed !important;
+}
+
+/* عدّاد الحجوزات: خلفية فاتحة ونص ظاهر */
+.main .reservation-count {
+  color: #1e40af !important;
+  background: #e8f0ff !important;
+  border: 1px solid #b8cff5 !important;
+}
+
+/* حالات الحجز بألوان مقروءة */
+.main .reservation-status-completed,
+.main .status.active {
+  color: #166534 !important;
+  background: #dcfce7 !important;
+  border-color: #86efac !important;
+}
+.main .reservation-status-pending {
+  color: #92400e !important;
+  background: #fef3c7 !important;
+  border-color: #fcd34d !important;
+}
+.main .reservation-status-cancelled,
+.main .status.inactive {
+  color: #9f1239 !important;
+  background: #ffe4e6 !important;
+  border-color: #fda4af !important;
+}
+
+.main button.view-btn:focus-visible,
+.main button.edit-btn:focus-visible {
+  outline: 3px solid #60a5fa !important;
+  outline-offset: 2px !important;
+}
+
+/* === EL SHARQ ACTION CONTRAST FIX END === */
+
+
+/* === EL SHARQ NOTIFICATION BADGE === */
+#lowStockButton {
+    position: relative;
+    overflow: visible;
+}
+#lowStockButton .notification-count-badge {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    z-index: 2;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #111b24;
+    border-radius: 999px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 2px 7px rgba(0, 0, 0, .3);
+    pointer-events: none;
+}
+#lowStockButton .notification-count-badge[hidden] {
+    display: none !important;
+}
+/* === EL SHARQ NOTIFICATION BADGE END === */
+/* LOVABLE_SEARCH_DROPDOWN_CONTRAST_V1 */
+.autocomplete-dropdown,
+.product-picker-dropdown,
+.reservation-product-dropdown,
+#saleCustomerDropdown,
+#accountPaymentInvoiceResults {
+    color: #1f2937 !important;
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 14px 32px rgba(31, 41, 55, .16) !important;
+}
+
+.autocomplete-dropdown .autocomplete-item,
+.product-picker-dropdown .product-picker-option,
+.reservation-product-dropdown .reservation-suggestion,
+#saleCustomerDropdown [data-customer-id],
+#accountPaymentInvoiceResults [role="option"] {
+    color: #1f2937 !important;
+    background: transparent !important;
+    border-color: #e5eaf1 !important;
+}
+
+.autocomplete-dropdown .autocomplete-item-main,
+.autocomplete-dropdown .autocomplete-item-main strong,
+.autocomplete-dropdown .autocomplete-empty,
+.autocomplete-dropdown .autocomplete-empty strong,
+.product-picker-dropdown .product-picker-option,
+.product-picker-dropdown .product-picker-option strong,
+.reservation-product-dropdown .reservation-suggestion,
+.reservation-product-dropdown .reservation-suggestion-main strong,
+#saleCustomerDropdown [data-customer-id] strong,
+#accountPaymentInvoiceResults [role="option"] {
+    color: #1f2937 !important;
+}
+
+.autocomplete-dropdown .autocomplete-empty span,
+.autocomplete-dropdown .autocomplete-cat,
+.product-picker-dropdown .product-picker-option small,
+.product-picker-dropdown .product-picker-empty,
+.reservation-product-dropdown .reservation-suggestion-main small,
+.reservation-product-dropdown .reservation-no-match,
+#saleCustomerDropdown [data-customer-id] div > span,
+#accountPaymentInvoiceResults > div:not([role="option"]) {
+    color: #596579 !important;
+}
+
+.autocomplete-dropdown .autocomplete-price,
+.product-picker-dropdown .product-picker-code,
+.reservation-product-dropdown .reservation-suggestion-price {
+    color: #3267c5 !important;
+}
+
+.autocomplete-dropdown .autocomplete-cat {
+    background: #f1f5f9 !important;
+    border-color: #dce3ec !important;
+}
+
+.autocomplete-dropdown .autocomplete-item:hover,
+.autocomplete-dropdown .autocomplete-item:focus,
+.autocomplete-dropdown .autocomplete-item:focus-visible,
+.product-picker-dropdown .product-picker-option:hover,
+.product-picker-dropdown .product-picker-option:focus-visible,
+.product-picker-dropdown .product-picker-option.is-active,
+.reservation-product-dropdown .reservation-suggestion:hover,
+.reservation-product-dropdown .reservation-suggestion-active,
+#saleCustomerDropdown [data-customer-id]:hover,
+#accountPaymentInvoiceResults [role="option"]:hover,
+#accountPaymentInvoiceResults [role="option"]:focus-visible {
+    color: #1d4ed8 !important;
+    background: #eaf1ff !important;
+    border-color: #c8d9fb !important;
+}

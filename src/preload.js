@@ -54,10 +54,13 @@ contextBridge.exposeInMainWorld("elSharq", {
     getWorkerLedger: (id) => ipcRenderer.invoke("workers:getLedger", id),
     createWorker: (payload) => ipcRenderer.invoke("workers:create", payload),
     updateWorker: (id, payload) => ipcRenderer.invoke("workers:update", id, payload),
+    stopWorker: (id) => ipcRenderer.invoke("workers:setActive", id),
     addWorkerAdvance: (id, amount, notes) => ipcRenderer.invoke("workers:addAdvance", id, amount, notes),
     payWorkerSalaryCycle: (cycleId) => ipcRenderer.invoke("workers:payCycle", cycleId),
     getSales: (filter, searchTerm = "") =>
         ipcRenderer.invoke("sales:getAll", filter, searchTerm),
+
+    consolidateInvoices: (ids) => ipcRenderer.invoke("sales:consolidate", ids),
 
     getSaleById: (id) =>
         ipcRenderer.invoke("sales:getById", id),
@@ -70,7 +73,9 @@ contextBridge.exposeInMainWorld("elSharq", {
 
     // ====== حجوزات العملاء ======
     getReservations: () => ipcRenderer.invoke("reservations:getAll"),
+    getReservationById: (id) => ipcRenderer.invoke("reservations:getById", id),
     createReservation: (payload) => ipcRenderer.invoke("reservations:create", payload),
+    updateReservation: (id, payload) => ipcRenderer.invoke("reservations:update", id, payload),
     addReservationPayment: (id, amount) => ipcRenderer.invoke("reservations:addPayment", id, amount),
     cancelReservation: (id) => ipcRenderer.invoke("reservations:cancel", id),
     deliverReservation: (id, additionalPayment) =>
@@ -122,12 +127,20 @@ contextBridge.exposeInMainWorld("elSharq", {
     getCustomers: () =>
         ipcRenderer.invoke("customers:getAll"),
 
+    getPendingReturnInvoices: () => ipcRenderer.invoke("sales:getPendingReturnInvoices"),
     getOutstandingInvoices: (entity) =>
         entity === "customers"
             ? ipcRenderer.invoke("customers:getOutstanding")
             : entity === "suppliers"
                 ? ipcRenderer.invoke("suppliers:getOutstanding")
                 : Promise.reject(new Error("نوع الحساب غير صحيح")),
+
+    refundCreditBalance: (customerId, amount, saleId) => ipcRenderer.invoke("contacts:refundCreditBalance", customerId, amount, saleId),
+        getCustomerPayables: () =>
+        ipcRenderer.invoke("customers:getPayables"),
+
+    refundCustomer: (customerId, amount, notes, invoiceNumber) =>
+        ipcRenderer.invoke("contacts:refundCustomer", customerId, amount, notes, invoiceNumber),
 
     recordAccountPayment: (entity, invoiceId, amount) =>
         ipcRenderer.invoke("contacts:recordPayment", entity, invoiceId, amount),
@@ -155,8 +168,11 @@ contextBridge.exposeInMainWorld("elSharq", {
     getExpenses: () =>
         ipcRenderer.invoke("cash:getExpenses"),
 
-    deleteExpense: (expenseId) =>
-        ipcRenderer.invoke("cash:deleteExpense", expenseId),
+    deleteExpense: (expenseId, password) =>
+        ipcRenderer.invoke("cash:deleteExpense", expenseId, password),
+
+    addExpense: (entry) =>
+        ipcRenderer.invoke("cash:addExpense", entry),
 
     addCashTransaction: (entry) =>
         ipcRenderer.invoke("cash:addTransaction", entry),
@@ -172,8 +188,23 @@ contextBridge.exposeInMainWorld("elSharq", {
     saveSettings: (settings) =>
         ipcRenderer.invoke("settings:save", settings),
 
-    setDeletionPassword: (currentPassword, newPassword) =>
-        ipcRenderer.invoke("settings:setDeletionPassword", currentPassword, newPassword),
+
+    exportProductCatalog: () =>
+        ipcRenderer.invoke("products:exportCatalog"),
+
+    importProductCatalog: () =>
+        ipcRenderer.invoke("products:importCatalog"),
+
+    isFinancePasswordConfigured: () =>
+        ipcRenderer.invoke("finance:isConfigured"),
+
+    verifyFinancePassword: (password) =>
+        ipcRenderer.invoke("finance:verifyPassword", password),
+
+    setSharedSecurityPassword: (currentFinancePassword, currentDeletionPassword, newPassword) =>
+        ipcRenderer.invoke("security:setSharedPassword", currentFinancePassword, currentDeletionPassword, newPassword),
+
+    lockFinanceSession: () => ipcRenderer.invoke("finance:lock"),
 
     backupDatabase: () =>
         ipcRenderer.invoke("database:backup")
